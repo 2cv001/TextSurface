@@ -3,13 +3,49 @@ import FreeCADGui, FreeCAD, Draft
 from statistics import mean
 import os
 
-# Déterminer le système d'exploitation
+# --- Déterminer le chemin du fichier INI ---
+# Chemin complet de la macro en cours
+macro_fullpath = __file__
+# Dossier contenant la macro
+macro_path = os.path.dirname(macro_fullpath)
+# Nom de la macro sans extension
+macro_name = os.path.splitext(os.path.basename(macro_fullpath))[0]
+# Chemin du fichier INI
+ini_path = os.path.join(macro_path, macro_name + ".ini")
+
+
+# --- Charger la police depuis le INI si présent ---
+def loadFontFromIni(default_font):
+    if os.path.exists(ini_path):
+        try:
+            with open(ini_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("font="):
+                        font = line.split("=",1)[1].strip()
+                        if os.path.exists(font):
+                            return font
+        except:
+            pass
+    return default_font
+
+# --- Sauvegarder la police dans le INI ---
+def saveFontToIni(font_path):
+    try:
+        with open(ini_path, "w", encoding="utf-8") as f:
+            f.write("font=" + font_path)
+    except:
+        pass
+
+# --- Déterminer la police par défaut selon OS ---
 if os.name == 'nt':
-    FichierPoliceDeCaracteres = "C:/Windows/Fonts/ARIAL.TTF"
+    DefaultFont = "C:/Windows/Fonts/ARIAL.TTF"
 elif os.name == 'posix':
-    FichierPoliceDeCaracteres = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    DefaultFont = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 else:
-    print("système d'exploitation non reconnu")
+    DefaultFont = ""
+
+# --- Charger police depuis INI ou défaut ---
+FichierPoliceDeCaracteres = loadFontFromIni(DefaultFont)
 
 # --- Vérification de la sélection ---
 selEx = FreeCADGui.Selection.getSelectionEx()
@@ -80,13 +116,25 @@ else:
             layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
 
             # --- Taille du texte ---
-            # --- Taille du texte ---
             self.sizeSpin = QtGui.QDoubleSpinBox()
             self.sizeSpin.setRange(0.1, 500)
             self.sizeSpin.setDecimals(3)
-            self.sizeSpin.setSingleStep(0.5)  # <<< PAS DE 0,5 mm
+            self.sizeSpin.setSingleStep(0.5)
             self.sizeSpin.setValue(shape.Size)
             layout.addRow("Taille du texte :", self.sizeSpin)
+
+            # --- Police de caractères ---
+            # --- Police de caractères ---
+            self.fontEdit = QtGui.QLineEdit(FichierPoliceDeCaracteres)
+            self.fontEdit.setMinimumWidth(300)
+
+            self.fontBtn = QtGui.QPushButton("Choisir…")
+            self.fontBtn.clicked.connect(self.chooseFont)
+
+            fontLayout = QtGui.QHBoxLayout()
+            fontLayout.addWidget(self.fontEdit)
+            fontLayout.addWidget(self.fontBtn)
+            layout.addRow("Police :", fontLayout)
 
             # --- Miroir ---
             self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
@@ -122,6 +170,27 @@ else:
 
             self.setLayout(layout)
 
+        def chooseFont(self):
+            # Sélecteur sans chemin imposé (évite les restrictions Windows)
+            font_path, _ = QtGui.QFileDialog.getOpenFileName(
+                self,
+                "Choisir une police TrueType",
+                "",
+                "Polices (*.ttf *.otf);;Tous les fichiers (*.*)"
+            )
+
+            if font_path:
+                # Mise à jour du champ texte
+                self.fontEdit.setText(font_path)
+
+                # Sauvegarde dans le fichier INI
+                saveFontToIni(font_path)
+
+                # Mise à jour du ShapeString
+                self.shape.FontFile = font_path
+
+                FreeCAD.ActiveDocument.recompute()
+
         def applyChanges(self):
             # Rotation
             angle = self.rotSpin.value()
@@ -130,6 +199,12 @@ else:
 
             # Taille du texte
             self.shape.Size = self.sizeSpin.value()
+
+            # Police (si modifiée)
+            font_path = self.fontEdit.text().strip()
+            if font_path:
+                self.shape.FontFile = font_path
+                saveFontToIni(font_path)
 
             # Miroir
             self.shape.MapReversed = self.mirrorCheck.isChecked()
