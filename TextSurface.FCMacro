@@ -1,11 +1,9 @@
-import FreeCAD, FreeCADGui, Draft#, Part
+import FreeCAD, FreeCADGui, Draft  # , Part
 import Part
 import PartDesign
 from FreeCAD import Base
 import statistics
 from statistics import mean
-
-### Valeurs à adapter à vos besoins
 import os
 
 # Déterminer le système d'exploitation
@@ -15,71 +13,170 @@ elif os.name == 'posix':  # Linux
     FichierPoliceDeCaracteres = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 else:
     print("système d'exploitation non reconnu")
-#FichierPoliceDeCaracteres="C:/Windows/Fonts/ARIAL.TTF" # pb si on est en linux... A traiter.
-TailleCaracteres=4 
-TextParDefaut="Text"
 
-def milieu(face): # finallement fonction non utilisée, je la garde pour mémoire de comment atteindre les sommets
-    listeSommetsX=[]
-    listeSommetsY=[]
-    listeSommetsZ=[]
-    Milieu=[0,0,0]
+TailleCaracteres = 4
+TextParDefaut = "Text"
+
+def milieu(face):
+    listeSommetsX = []
+    listeSommetsY = []
+    listeSommetsZ = []
+    Milieu = [0, 0, 0]
     for sommet in face.Vertexes:
-        listeSommetsX.append(sommet.Point.x)    
-        print(sommet.Point)
+        listeSommetsX.append(sommet.Point.x)
         listeSommetsY.append(sommet.Point.y)
-        listeSommetsZ.append(sommet.Point.z)                    
-        #print(milieuX, ' ',milieuY,' ',milieuZ)
-    Milieu[0]=mean([min(listeSommetsX),max(listeSommetsX)])
-    Milieu[1]=mean([min(listeSommetsY),max(listeSommetsY)])
-    Milieu[2]=mean([min(listeSommetsZ),max(listeSommetsZ)])
-    return(Milieu)
-
-
+        listeSommetsZ.append(sommet.Point.z)
+    Milieu[0] = mean([min(listeSommetsX), max(listeSommetsX)])
+    Milieu[1] = mean([min(listeSommetsY), max(listeSommetsY)])
+    Milieu[2] = mean([min(listeSommetsZ), max(listeSommetsZ)])
+    return Milieu
 
 try:
-    sel = FreeCADGui.Selection.getSelection()       # get the selection
-    SubElement = FreeCADGui.Selection.getSelectionEx()# "getSelectionEx" Used for selecting subobjects
-    nomFace = SubElement[0].SubElementNames[0]       # Sélection au niveau de la Face
+    sel = FreeCADGui.Selection.getSelection()
+    SubElement = FreeCADGui.Selection.getSelectionEx()
+    nomFace = SubElement[0].SubElementNames[0]
 
 except:
-    App.Console.PrintError( "Sélectionnez la face sur laquelle vous voulez écrire avant de lancer la macro"+"\n")
+    App.Console.PrintError("Sélectionnez la face sur laquelle vous voulez écrire avant de lancer la macro\n")
 else:
-    bodySelect = Gui.ActiveDocument.ActiveView.getActiveObject('pdbody') # il vaudrait mieux récupérer le body de la face sélectionnée
+    bodySelect = Gui.ActiveDocument.ActiveView.getActiveObject('pdbody')
     if bodySelect is None:
         App.Console.PrintError(' 1-Un corps doit être actif (le sélectionner en double-cliquant sur son nom)')
-    else :
+    else:
 
-        #Récupération de la face sélectionnée
-        nomObjetSelect= str(sel[0].Name) # par exemple Pad001
-        App.Console.PrintMessage("Objet sélectionnée  : "+nomObjetSelect) 
-        faceObjetSelect= str(nomFace) # par exemple Face 5
-        App.Console.PrintMessage("\nFace sélectionnée  : "+faceObjetSelect+"\n") 
-        ###Création du ShapeString sur la face sélectionnée
-        
-        nouvelleShapeString=Draft.makeShapeString(String=TextParDefaut,FontFile=FichierPoliceDeCaracteres,Size=TailleCaracteres,Tracking=0.0)
+        nomObjetSelect = str(sel[0].Name)
+        App.Console.PrintMessage("Objet sélectionné  : " + nomObjetSelect)
+        faceObjetSelect = str(nomFace)
+        App.Console.PrintMessage("\nFace sélectionnée  : " + faceObjetSelect + "\n")
+
+        # Création du ShapeString
+        nouvelleShapeString = Draft.makeShapeString(
+            String=TextParDefaut,
+            FontFile=FichierPoliceDeCaracteres,
+            Size=TailleCaracteres,
+            Tracking=0.0
+        )
+
         plm = FreeCAD.Placement()
         plm.Base = FreeCAD.Vector(0.0, 0.0, 0.0)
         plm.Rotation.Q = (0.0, 0.0, 0.0, 0.0)
         nouvelleShapeString.Placement = plm
         nouvelleShapeString.AttachmentSupport = None
-        Draft.autogroup(nouvelleShapeString)
+
+        # --- Trouver le Body de la face sélectionnée ---
+        def findBodyOf(obj):
+            while obj:
+                if obj.TypeId == "PartDesign::Body":
+                    return obj
+                obj = obj.getParentGeoFeatureGroup()
+            return None
+
+        bodyOfFace = findBodyOf(sel[0])
+
+        # --- Ajouter le ShapeString dans le Body de la face ---
+        bodyOfFace.addObjects([nouvelleShapeString])
+
         FreeCAD.ActiveDocument.recompute()
-        nouvelleShapeString.AttachmentOffset = App.Placement(App.Vector(0.0000000000, 0.0000000000, 0.0000000000),  App.Rotation(0.0000000000, 0.0000000000, 0.0000000000))
+
+        # Attachement
+        nouvelleShapeString.AttachmentOffset = App.Placement(
+            App.Vector(0, 0, 0),
+            App.Rotation(0, 0, 0)
+        )
         nouvelleShapeString.MapReversed = False
-        nouvelleShapeString.AttachmentSupport = [(App.getDocument(App.ActiveDocument.Name).getObject(nomObjetSelect),faceObjetSelect)]
-        nouvelleShapeString.MapPathParameter = 0.000000
+        nouvelleShapeString.AttachmentSupport = [
+            (App.getDocument(App.ActiveDocument.Name).getObject(nomObjetSelect), faceObjetSelect)
+        ]
+        nouvelleShapeString.MapPathParameter = 0.0
         nouvelleShapeString.MapMode = 'InertialCS'
         nouvelleShapeString.Justification = u"Middle-Center"
-        #nouvelleShapeString.AttachmentOffset = App.Placement(App.Vector(0.0000000000, 0.0000000000, 0.0000000000),  App.Rotation(0.0000000000, 0.0000000000, 0.0000000000))
-        nouvelleShapeString.recompute() # pas sûr que ce recompute soit nécessaire à priori non
-        
-        # Déplacement du ShapeString pour le placer dans le body actif
 
-        bodySelect.addObjects([nouvelleShapeString])
-
-
+        nouvelleShapeString.recompute()
         App.ActiveDocument.recompute()
-        
 
-       
+
+
+
+
+
+
+# --- Récupérer la normale de la face ---
+face = SubElement[0].SubObjects[0]
+normal = face.normalAt(0,0).normalize()
+
+from PySide import QtGui, QtCore
+import math
+
+class TextAdjustDialog(QtGui.QDialog):
+    def __init__(self, shape, normal):
+        super(TextAdjustDialog, self).__init__()
+        self.shape = shape
+        self.normal = normal
+        self.setWindowTitle("Réglages du texte")
+
+        layout = QtGui.QFormLayout()
+
+        # Rotation
+        self.rotSpin = QtGui.QDoubleSpinBox()
+        self.rotSpin.setRange(-360, 360)
+        self.rotSpin.setValue(0)
+        layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+
+        # Miroir
+        self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
+        self.mirrorCheck.setChecked(shape.MapReversed)
+        layout.addRow(self.mirrorCheck)
+
+        # Offsets
+        self.xSpin = QtGui.QDoubleSpinBox()
+        self.ySpin = QtGui.QDoubleSpinBox()
+        self.zSpin = QtGui.QDoubleSpinBox()
+        for spin in (self.xSpin, self.ySpin, self.zSpin):
+            spin.setRange(-1000, 1000)
+            spin.setDecimals(3)
+
+        self.xSpin.setValue(shape.AttachmentOffset.Base.x)
+        self.ySpin.setValue(shape.AttachmentOffset.Base.y)
+        self.zSpin.setValue(shape.AttachmentOffset.Base.z)
+
+        layout.addRow("Offset X :", self.xSpin)
+        layout.addRow("Offset Y :", self.ySpin)
+        layout.addRow("Offset Z :", self.zSpin)
+
+        # Boutons
+        btnLayout = QtGui.QHBoxLayout()
+        applyBtn = QtGui.QPushButton("Appliquer")
+        closeBtn = QtGui.QPushButton("Fermer")
+        btnLayout.addWidget(applyBtn)
+        btnLayout.addWidget(closeBtn)
+        layout.addRow(btnLayout)
+
+        applyBtn.clicked.connect(self.applyChanges)
+        closeBtn.clicked.connect(self.close)
+
+        self.setLayout(layout)
+
+    def applyChanges(self):
+        angle = self.rotSpin.value()
+
+        # Rotation autour de l'axe Z local (normale de la face)
+        rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
+        self.shape.AttachmentOffset.Rotation = rot
+
+        # Miroir
+        self.shape.MapReversed = self.mirrorCheck.isChecked()
+
+        # Offsets
+        self.shape.AttachmentOffset.Base = FreeCAD.Vector(
+            self.xSpin.value(),
+            self.ySpin.value(),
+            self.zSpin.value()
+        )
+
+        self.shape.recompute()
+        FreeCAD.ActiveDocument.recompute()
+
+
+# --- Ouvrir la boîte de dialogue ---
+dlg = TextAdjustDialog(nouvelleShapeString, normal)
+dlg.exec()
