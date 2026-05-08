@@ -53,7 +53,7 @@ else:
     bodyOfFace.addObjects([nouvelleShapeString])
     FreeCAD.ActiveDocument.recompute()
 
-    nouvelleShapeString.AttachmentOffset = App.Placement(
+    nouvelleShapeString.AttachmentOffset = FreeCAD.Placement(
         FreeCAD.Vector(0, 0, 0),
         FreeCAD.Rotation(0, 0, 0)
     )
@@ -73,15 +73,27 @@ else:
 
             layout = QtGui.QFormLayout()
 
+            # --- Rotation ---
             self.rotSpin = QtGui.QDoubleSpinBox()
             self.rotSpin.setRange(-360, 360)
             self.rotSpin.setValue(0)
             layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
 
+            # --- Taille du texte ---
+            # --- Taille du texte ---
+            self.sizeSpin = QtGui.QDoubleSpinBox()
+            self.sizeSpin.setRange(0.1, 500)
+            self.sizeSpin.setDecimals(3)
+            self.sizeSpin.setSingleStep(0.5)  # <<< PAS DE 0,5 mm
+            self.sizeSpin.setValue(shape.Size)
+            layout.addRow("Taille du texte :", self.sizeSpin)
+
+            # --- Miroir ---
             self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
             self.mirrorCheck.setChecked(shape.MapReversed)
             layout.addRow(self.mirrorCheck)
 
+            # --- Offsets ---
             self.xSpin = QtGui.QDoubleSpinBox()
             self.ySpin = QtGui.QDoubleSpinBox()
             self.zSpin = QtGui.QDoubleSpinBox()
@@ -97,6 +109,7 @@ else:
             layout.addRow("Offset Y :", self.ySpin)
             layout.addRow("Offset Z :", self.zSpin)
 
+            # --- Boutons ---
             btnLayout = QtGui.QHBoxLayout()
             applyBtn = QtGui.QPushButton("Appliquer")
             closeBtn = QtGui.QPushButton("Fermer")
@@ -110,13 +123,18 @@ else:
             self.setLayout(layout)
 
         def applyChanges(self):
+            # Rotation
             angle = self.rotSpin.value()
-
             rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
             self.shape.AttachmentOffset.Rotation = rot
 
+            # Taille du texte
+            self.shape.Size = self.sizeSpin.value()
+
+            # Miroir
             self.shape.MapReversed = self.mirrorCheck.isChecked()
 
+            # Offsets
             self.shape.AttachmentOffset.Base = FreeCAD.Vector(
                 self.xSpin.value(),
                 self.ySpin.value(),
