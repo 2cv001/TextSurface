@@ -101,6 +101,7 @@ else:
 
     FreeCAD.ActiveDocument.recompute()
 
+
     class TextAdjustDialog(QtGui.QDialog):
         def __init__(self, shape):
             super(TextAdjustDialog, self).__init__()
@@ -109,21 +110,11 @@ else:
 
             layout = QtGui.QFormLayout()
 
-            # --- Rotation ---
-            self.rotSpin = QtGui.QDoubleSpinBox()
-            self.rotSpin.setRange(-360, 360)
-            self.rotSpin.setValue(0)
-            layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+            # --- Texte ---
+            self.textEdit = QtGui.QLineEdit(shape.String)
+            self.textEdit.setMinimumWidth(300)
+            layout.addRow("Texte :", self.textEdit)
 
-            # --- Taille du texte ---
-            self.sizeSpin = QtGui.QDoubleSpinBox()
-            self.sizeSpin.setRange(0.1, 500)
-            self.sizeSpin.setDecimals(3)
-            self.sizeSpin.setSingleStep(0.5)
-            self.sizeSpin.setValue(shape.Size)
-            layout.addRow("Taille du texte :", self.sizeSpin)
-
-            # --- Police de caractères ---
             # --- Police de caractères ---
             self.fontEdit = QtGui.QLineEdit(FichierPoliceDeCaracteres)
             self.fontEdit.setMinimumWidth(300)
@@ -135,6 +126,14 @@ else:
             fontLayout.addWidget(self.fontEdit)
             fontLayout.addWidget(self.fontBtn)
             layout.addRow("Police :", fontLayout)
+
+            # --- Taille du texte ---
+            self.sizeSpin = QtGui.QDoubleSpinBox()
+            self.sizeSpin.setRange(0.1, 500)
+            self.sizeSpin.setDecimals(3)
+            self.sizeSpin.setSingleStep(0.5)
+            self.sizeSpin.setValue(shape.Size)
+            layout.addRow("Taille du texte :", self.sizeSpin)
 
             # --- Miroir ---
             self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
@@ -157,6 +156,12 @@ else:
             layout.addRow("Offset Y :", self.ySpin)
             layout.addRow("Offset Z :", self.zSpin)
 
+            # --- Rotation ---
+            self.rotSpin = QtGui.QDoubleSpinBox()
+            self.rotSpin.setRange(-360, 360)
+            self.rotSpin.setValue(0)
+            layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+
             # --- Boutons ---
             btnLayout = QtGui.QHBoxLayout()
             applyBtn = QtGui.QPushButton("Appliquer")
@@ -171,7 +176,6 @@ else:
             self.setLayout(layout)
 
         def chooseFont(self):
-            # Sélecteur sans chemin imposé (évite les restrictions Windows)
             font_path, _ = QtGui.QFileDialog.getOpenFileName(
                 self,
                 "Choisir une police TrueType",
@@ -180,31 +184,26 @@ else:
             )
 
             if font_path:
-                # Mise à jour du champ texte
                 self.fontEdit.setText(font_path)
-
-                # Sauvegarde dans le fichier INI
                 saveFontToIni(font_path)
-
-                # Mise à jour du ShapeString
                 self.shape.FontFile = font_path
-
                 FreeCAD.ActiveDocument.recompute()
 
         def applyChanges(self):
-            # Rotation
-            angle = self.rotSpin.value()
-            rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
-            self.shape.AttachmentOffset.Rotation = rot
 
-            # Taille du texte
-            self.shape.Size = self.sizeSpin.value()
+            # Texte
+            new_text = self.textEdit.text().strip()
+            if new_text:
+                self.shape.String = new_text
 
-            # Police (si modifiée)
+            # Police
             font_path = self.fontEdit.text().strip()
             if font_path:
                 self.shape.FontFile = font_path
                 saveFontToIni(font_path)
+
+            # Taille du texte
+            self.shape.Size = self.sizeSpin.value()
 
             # Miroir
             self.shape.MapReversed = self.mirrorCheck.isChecked()
@@ -216,7 +215,14 @@ else:
                 self.zSpin.value()
             )
 
+            # Rotation
+            angle = self.rotSpin.value()
+            rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
+            self.shape.AttachmentOffset.Rotation = rot
+
             FreeCAD.ActiveDocument.recompute()
+
+
 
     dlg = TextAdjustDialog(nouvelleShapeString)
     dlg.exec()
