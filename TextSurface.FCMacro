@@ -1,182 +1,129 @@
-import FreeCAD, FreeCADGui, Draft  # , Part
-import Part
-import PartDesign
-from FreeCAD import Base
-import statistics
+from PySide import QtGui
+import FreeCADGui, FreeCAD, Draft
 from statistics import mean
 import os
 
 # Déterminer le système d'exploitation
-if os.name == 'nt':  # Windows
+if os.name == 'nt':
     FichierPoliceDeCaracteres = "C:/Windows/Fonts/ARIAL.TTF"
-elif os.name == 'posix':  # Linux
+elif os.name == 'posix':
     FichierPoliceDeCaracteres = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 else:
     print("système d'exploitation non reconnu")
 
-TailleCaracteres = 4
-TextParDefaut = "Text"
+# --- Vérification de la sélection ---
+selEx = FreeCADGui.Selection.getSelectionEx()
 
-def milieu(face):
-    listeSommetsX = []
-    listeSommetsY = []
-    listeSommetsZ = []
-    Milieu = [0, 0, 0]
-    for sommet in face.Vertexes:
-        listeSommetsX.append(sommet.Point.x)
-        listeSommetsY.append(sommet.Point.y)
-        listeSommetsZ.append(sommet.Point.z)
-    Milieu[0] = mean([min(listeSommetsX), max(listeSommetsX)])
-    Milieu[1] = mean([min(listeSommetsY), max(listeSommetsY)])
-    Milieu[2] = mean([min(listeSommetsZ), max(listeSommetsZ)])
-    return Milieu
-
-try:
-    sel = FreeCADGui.Selection.getSelection()
-    SubElement = FreeCADGui.Selection.getSelectionEx()
-    nomFace = SubElement[0].SubElementNames[0]
-
-except:
-    App.Console.PrintError("Sélectionnez la face sur laquelle vous voulez écrire avant de lancer la macro\n")
+if not selEx or not selEx[0].SubElementNames or not selEx[0].SubObjects:
+    QtGui.QMessageBox.warning(
+        None,
+        "Sélection manquante",
+        "Sélectionnez la face où vous souhaitez placer le texte avant de lancer la macro."
+    )
 else:
-    bodySelect = Gui.ActiveDocument.ActiveView.getActiveObject('pdbody')
-    if bodySelect is None:
-        App.Console.PrintError(' 1-Un corps doit être actif (le sélectionner en double-cliquant sur son nom)')
-    else:
 
-        nomObjetSelect = str(sel[0].Name)
-        App.Console.PrintMessage("Objet sélectionné  : " + nomObjetSelect)
-        faceObjetSelect = str(nomFace)
-        App.Console.PrintMessage("\nFace sélectionnée  : " + faceObjetSelect + "\n")
+    selObj = selEx[0].Object
+    nomFace = selEx[0].SubElementNames[0]
 
-        # Création du ShapeString
-        nouvelleShapeString = Draft.makeShapeString(
-            String=TextParDefaut,
-            FontFile=FichierPoliceDeCaracteres,
-            Size=TailleCaracteres,
-            Tracking=0.0
-        )
+    TailleCaracteres = 4
+    TextParDefaut = "Text"
 
-        plm = FreeCAD.Placement()
-        plm.Base = FreeCAD.Vector(0.0, 0.0, 0.0)
-        plm.Rotation.Q = (0.0, 0.0, 0.0, 0.0)
-        nouvelleShapeString.Placement = plm
-        nouvelleShapeString.AttachmentSupport = None
+    def findBodyOf(obj):
+        while obj:
+            if obj.TypeId == "PartDesign::Body":
+                return obj
+            obj = obj.getParentGeoFeatureGroup()
+        return None
 
-        # --- Trouver le Body de la face sélectionnée ---
-        def findBodyOf(obj):
-            while obj:
-                if obj.TypeId == "PartDesign::Body":
-                    return obj
-                obj = obj.getParentGeoFeatureGroup()
-            return None
+    bodyOfFace = findBodyOf(selObj)
 
-        bodyOfFace = findBodyOf(sel[0])
+    nouvelleShapeString = Draft.makeShapeString(
+        String=TextParDefaut,
+        FontFile=FichierPoliceDeCaracteres,
+        Size=TailleCaracteres,
+        Tracking=0.0
+    )
 
-        # --- Ajouter le ShapeString dans le Body de la face ---
-        bodyOfFace.addObjects([nouvelleShapeString])
+    plm = FreeCAD.Placement()
+    plm.Base = FreeCAD.Vector(0, 0, 0)
+    plm.Rotation.Q = (0, 0, 0, 0)
+    nouvelleShapeString.Placement = plm
+    nouvelleShapeString.AttachmentSupport = None
 
-        FreeCAD.ActiveDocument.recompute()
+    bodyOfFace.addObjects([nouvelleShapeString])
+    FreeCAD.ActiveDocument.recompute()
 
-        # Attachement
-        nouvelleShapeString.AttachmentOffset = App.Placement(
-            App.Vector(0, 0, 0),
-            App.Rotation(0, 0, 0)
-        )
-        nouvelleShapeString.MapReversed = False
-        nouvelleShapeString.AttachmentSupport = [
-            (App.getDocument(App.ActiveDocument.Name).getObject(nomObjetSelect), faceObjetSelect)
-        ]
-        nouvelleShapeString.MapPathParameter = 0.0
-        nouvelleShapeString.MapMode = 'InertialCS'
-        nouvelleShapeString.Justification = u"Middle-Center"
+    nouvelleShapeString.AttachmentOffset = App.Placement(
+        FreeCAD.Vector(0, 0, 0),
+        FreeCAD.Rotation(0, 0, 0)
+    )
+    nouvelleShapeString.MapReversed = False
+    nouvelleShapeString.AttachmentSupport = [(selObj, nomFace)]
+    nouvelleShapeString.MapPathParameter = 0.0
+    nouvelleShapeString.MapMode = 'InertialCS'
+    nouvelleShapeString.Justification = u"Middle-Center"
 
-        nouvelleShapeString.recompute()
-        App.ActiveDocument.recompute()
+    FreeCAD.ActiveDocument.recompute()
 
+    class TextAdjustDialog(QtGui.QDialog):
+        def __init__(self, shape):
+            super(TextAdjustDialog, self).__init__()
+            self.shape = shape
+            self.setWindowTitle("Réglages du texte")
 
+            layout = QtGui.QFormLayout()
 
+            self.rotSpin = QtGui.QDoubleSpinBox()
+            self.rotSpin.setRange(-360, 360)
+            self.rotSpin.setValue(0)
+            layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
 
+            self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
+            self.mirrorCheck.setChecked(shape.MapReversed)
+            layout.addRow(self.mirrorCheck)
 
+            self.xSpin = QtGui.QDoubleSpinBox()
+            self.ySpin = QtGui.QDoubleSpinBox()
+            self.zSpin = QtGui.QDoubleSpinBox()
+            for spin in (self.xSpin, self.ySpin, self.zSpin):
+                spin.setRange(-1000, 1000)
+                spin.setDecimals(3)
 
+            self.xSpin.setValue(shape.AttachmentOffset.Base.x)
+            self.ySpin.setValue(shape.AttachmentOffset.Base.y)
+            self.zSpin.setValue(shape.AttachmentOffset.Base.z)
 
-# --- Récupérer la normale de la face ---
-face = SubElement[0].SubObjects[0]
-normal = face.normalAt(0,0).normalize()
+            layout.addRow("Offset X :", self.xSpin)
+            layout.addRow("Offset Y :", self.ySpin)
+            layout.addRow("Offset Z :", self.zSpin)
 
-from PySide import QtGui, QtCore
-import math
+            btnLayout = QtGui.QHBoxLayout()
+            applyBtn = QtGui.QPushButton("Appliquer")
+            closeBtn = QtGui.QPushButton("Fermer")
+            btnLayout.addWidget(applyBtn)
+            btnLayout.addWidget(closeBtn)
+            layout.addRow(btnLayout)
 
-class TextAdjustDialog(QtGui.QDialog):
-    def __init__(self, shape, normal):
-        super(TextAdjustDialog, self).__init__()
-        self.shape = shape
-        self.normal = normal
-        self.setWindowTitle("Réglages du texte")
+            applyBtn.clicked.connect(self.applyChanges)
+            closeBtn.clicked.connect(self.close)
 
-        layout = QtGui.QFormLayout()
+            self.setLayout(layout)
 
-        # Rotation
-        self.rotSpin = QtGui.QDoubleSpinBox()
-        self.rotSpin.setRange(-360, 360)
-        self.rotSpin.setValue(0)
-        layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+        def applyChanges(self):
+            angle = self.rotSpin.value()
 
-        # Miroir
-        self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
-        self.mirrorCheck.setChecked(shape.MapReversed)
-        layout.addRow(self.mirrorCheck)
+            rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
+            self.shape.AttachmentOffset.Rotation = rot
 
-        # Offsets
-        self.xSpin = QtGui.QDoubleSpinBox()
-        self.ySpin = QtGui.QDoubleSpinBox()
-        self.zSpin = QtGui.QDoubleSpinBox()
-        for spin in (self.xSpin, self.ySpin, self.zSpin):
-            spin.setRange(-1000, 1000)
-            spin.setDecimals(3)
+            self.shape.MapReversed = self.mirrorCheck.isChecked()
 
-        self.xSpin.setValue(shape.AttachmentOffset.Base.x)
-        self.ySpin.setValue(shape.AttachmentOffset.Base.y)
-        self.zSpin.setValue(shape.AttachmentOffset.Base.z)
+            self.shape.AttachmentOffset.Base = FreeCAD.Vector(
+                self.xSpin.value(),
+                self.ySpin.value(),
+                self.zSpin.value()
+            )
 
-        layout.addRow("Offset X :", self.xSpin)
-        layout.addRow("Offset Y :", self.ySpin)
-        layout.addRow("Offset Z :", self.zSpin)
+            FreeCAD.ActiveDocument.recompute()
 
-        # Boutons
-        btnLayout = QtGui.QHBoxLayout()
-        applyBtn = QtGui.QPushButton("Appliquer")
-        closeBtn = QtGui.QPushButton("Fermer")
-        btnLayout.addWidget(applyBtn)
-        btnLayout.addWidget(closeBtn)
-        layout.addRow(btnLayout)
-
-        applyBtn.clicked.connect(self.applyChanges)
-        closeBtn.clicked.connect(self.close)
-
-        self.setLayout(layout)
-
-    def applyChanges(self):
-        angle = self.rotSpin.value()
-
-        # Rotation autour de l'axe Z local (normale de la face)
-        rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
-        self.shape.AttachmentOffset.Rotation = rot
-
-        # Miroir
-        self.shape.MapReversed = self.mirrorCheck.isChecked()
-
-        # Offsets
-        self.shape.AttachmentOffset.Base = FreeCAD.Vector(
-            self.xSpin.value(),
-            self.ySpin.value(),
-            self.zSpin.value()
-        )
-
-        self.shape.recompute()
-        FreeCAD.ActiveDocument.recompute()
-
-
-# --- Ouvrir la boîte de dialogue ---
-dlg = TextAdjustDialog(nouvelleShapeString, normal)
-dlg.exec()
+    dlg = TextAdjustDialog(nouvelleShapeString)
+    dlg.exec()
