@@ -15,6 +15,276 @@ macro_name = os.path.splitext(os.path.basename(macro_fullpath))[0]
 ini_path = os.path.join(macro_path, macro_name + ".ini")
 
 
+class TextAdjustDialog(QtGui.QDialog):
+    def __init__(self, shape):
+        super(TextAdjustDialog, self).__init__()
+        self.shape = shape
+        self.previewObj = None
+
+        self.setWindowTitle("Réglages du texte")
+
+        layout = QtGui.QFormLayout()
+
+        # --- Texte ---
+        self.textEdit = QtGui.QLineEdit(shape.String)
+        self.textEdit.setMinimumWidth(300)
+        layout.addRow("Texte :", self.textEdit)
+        self.textEdit.textChanged.connect(self.applyChanges)
+
+        # --- Police de caractères ---
+        self.fontEdit = QtGui.QLineEdit(FichierPoliceDeCaracteres)
+        self.fontEdit.setMinimumWidth(300)
+        self.fontBtn = QtGui.QPushButton("Choisir…")
+        self.fontBtn.clicked.connect(self.chooseFont)
+
+        fontLayout = QtGui.QHBoxLayout()
+        fontLayout.addWidget(self.fontEdit)
+        fontLayout.addWidget(self.fontBtn)
+        layout.addRow("Police :", fontLayout)
+
+        # --- Taille du texte ---
+        self.sizeSpin = QtGui.QDoubleSpinBox()
+        self.sizeSpin.setRange(0.1, 500)
+        self.sizeSpin.setDecimals(3)
+        self.sizeSpin.setSingleStep(0.5)
+        self.sizeSpin.setValue(shape.Size)
+        layout.addRow("Taille du texte :", self.sizeSpin)
+        self.sizeSpin.valueChanged.connect(self.applyChanges)
+
+        # --- Miroir ---
+        self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
+        self.mirrorCheck.setChecked(shape.MapReversed)
+        layout.addRow(self.mirrorCheck)
+        self.mirrorCheck.toggled.connect(self.applyChanges)
+
+        # --- Offsets ---
+        self.xSpin = QtGui.QDoubleSpinBox()
+        self.ySpin = QtGui.QDoubleSpinBox()
+        self.zSpin = QtGui.QDoubleSpinBox()
+        for spin in (self.xSpin, self.ySpin, self.zSpin):
+            spin.setRange(-1000, 1000)
+            spin.setDecimals(3)
+
+        self.xSpin.setValue(shape.AttachmentOffset.Base.x)
+        self.ySpin.setValue(shape.AttachmentOffset.Base.y)
+        self.zSpin.setValue(shape.AttachmentOffset.Base.z)
+
+        layout.addRow("Offset X :", self.xSpin)
+        layout.addRow("Offset Y :", self.ySpin)
+        layout.addRow("Offset Z :", self.zSpin)
+
+        self.xSpin.valueChanged.connect(self.applyChanges)
+        self.ySpin.valueChanged.connect(self.applyChanges)
+        self.zSpin.valueChanged.connect(self.applyChanges)
+
+        # --- Rotation ---
+        self.rotSpin = QtGui.QDoubleSpinBox()
+        self.rotSpin.setRange(-360, 360)
+        self.rotSpin.setValue(0)
+        layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+        self.rotSpin.valueChanged.connect(self.applyChanges)
+
+        # --- Pad / Cavité ---
+        self.padSpin = QtGui.QDoubleSpinBox()
+        self.padSpin.setRange(0.1, 1000)
+        self.padSpin.setDecimals(3)
+        self.padSpin.setValue(5)
+
+        self.padCheck = QtGui.QCheckBox("Pad")
+        self.padCheck.toggled.connect(self.onPadToggled)
+
+        padLayout = QtGui.QHBoxLayout()
+        padLayout.addWidget(self.padSpin)
+        padLayout.addWidget(self.padCheck)
+        layout.addRow("Pad :", padLayout)
+
+        self.cavitySpin = QtGui.QDoubleSpinBox()
+        self.cavitySpin.setRange(0.1, 1000)
+        self.cavitySpin.setDecimals(3)
+        self.cavitySpin.setValue(5)
+
+        self.cavityCheck = QtGui.QCheckBox("Cavité")
+        self.cavityCheck.toggled.connect(self.onCavityToggled)
+
+        cavityLayout = QtGui.QHBoxLayout()
+        cavityLayout.addWidget(self.cavitySpin)
+        cavityLayout.addWidget(self.cavityCheck)
+        layout.addRow("Cavité :", cavityLayout)
+
+        # --- Boutons ---
+        btnLayout = QtGui.QHBoxLayout()
+        applyBtn = QtGui.QPushButton("Appliquer")
+        closeBtn = QtGui.QPushButton("Fermer")
+        btnLayout.addWidget(applyBtn)
+        btnLayout.addWidget(closeBtn)
+        layout.addRow(btnLayout)
+
+        applyBtn.clicked.connect(self.applyChanges)
+        closeBtn.clicked.connect(self.close)
+
+        self.setLayout(layout)
+
+    def chooseFont(self):
+        font_path, _ = QtGui.QFileDialog.getOpenFileName(
+            self,
+            "Choisir une police TrueType",
+            "",
+            "Polices (*.ttf *.otf);;Tous les fichiers (*.*)"
+        )
+
+        if font_path:
+            self.fontEdit.setText(font_path)
+            saveFontToIni(font_path)
+            self.shape.FontFile = font_path
+            FreeCAD.ActiveDocument.recompute()
+
+    def applyChanges(self):
+
+        # Texte
+        new_text = self.textEdit.text().strip()
+        if new_text:
+            self.shape.String = new_text
+
+        # Police
+        font_path = self.fontEdit.text().strip()
+        if font_path:
+            self.shape.FontFile = font_path
+            saveFontToIni(font_path)
+
+        # Taille du texte
+        self.shape.Size = self.sizeSpin.value()
+
+        # Miroir
+        # Ne réécrire MapReversed que si l’utilisateur a vraiment cliqué la case
+        if self.mirrorCheck.hasFocus():
+            self.shape.MapReversed = self.mirrorCheck.isChecked()
+
+        # Offsets
+        self.shape.AttachmentOffset.Base = FreeCAD.Vector(
+            self.xSpin.value(),
+            self.ySpin.value(),
+            self.zSpin.value()
+        )
+
+        # Rotation
+        angle = self.rotSpin.value()
+        rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
+        self.shape.AttachmentOffset.Rotation = rot
+
+        FreeCAD.ActiveDocument.recompute()
+        # preview pad ou cavity
+        if self.padCheck.isChecked():
+            self.showPadPreview()
+        elif self.cavityCheck.isChecked():
+            self.showPocketPreview()
+
+    def onPadToggled(self, checked):
+        if checked:
+            self.cavityCheck.setChecked(False)
+            self.applyChanges()
+            self.showPadPreview()
+        else:
+            self.clearPreview()
+
+    def onCavityToggled(self, checked):
+        if checked:
+            self.padCheck.setChecked(False)
+            self.applyChanges()
+            self.showPocketPreview()
+        else:
+            self.clearPreview()
+
+    def clearPreview(self):
+        doc = FreeCAD.ActiveDocument
+        if hasattr(self, "previewObj") and self.previewObj:
+            try:
+                doc.removeObject(self.previewObj.Name)
+            except:
+                pass
+            self.previewObj = None
+            doc.recompute()
+
+    def showPadPreview(self):
+        self.clearPreview()
+        doc = FreeCAD.ActiveDocument
+
+        # Récupérer la forme du ShapeString
+        shape = self.shape.Shape
+
+        # Normale de la face support
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+
+        # Extrusion
+        extruded = shape.extrude(normal * self.padSpin.value())
+
+        # Création de l'objet preview
+        obj = doc.addObject("Part::Feature", "PreviewPad")
+        obj.Shape = extruded
+        obj.ViewObject.Transparency = 70
+        obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)  # bleu clair
+
+        self.previewObj = obj
+        doc.recompute()
+
+    def showPocketPreview(self):
+        self.clearPreview()
+        doc = FreeCAD.ActiveDocument
+
+        shape = self.shape.Shape
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+
+        # Extrusion dans l'autre sens
+        extruded = shape.extrude(normal * (-self.cavitySpin.value()))
+
+        obj = doc.addObject("Part::Feature", "PreviewCavity")
+        obj.Shape = extruded
+        obj.ViewObject.Transparency = 70
+        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
+
+        self.previewObj = obj
+        doc.recompute()
+
+    def autoFixMirrorDirection(self):
+        print("\n=== autoFixMirrorDirection ===")
+
+        # Axe X local du texte
+        x_local = self.shape.AttachmentOffset.Rotation.multVec(FreeCAD.Vector(1, 0, 0))
+        x_local.normalize()
+        print("Axe X local :", x_local)
+
+        # Normale géométrique de la face
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+        normal.normalize()
+        print("Normale géométrique :", normal)
+
+        # Projection de la normale dans le plan XY
+        proj = FreeCAD.Vector(normal.x, normal.y, 0)
+        if proj.Length == 0:
+            print(">>> Face horizontale : pas de détection automatique")
+            return
+
+        proj.normalize()
+        print("Projection dans le plan :", proj)
+
+        # Comparaison
+        dot = x_local.dot(proj)
+        print("Dot product X_local / proj :", dot)
+
+        if dot < 0:
+            print(">>> Correction miroir : inversion MapReversed")
+            self.shape.MapReversed = not self.shape.MapReversed
+            self.mirrorCheck.setChecked(self.shape.MapReversed)
+            FreeCAD.ActiveDocument.recompute()
+        else:
+            print(">>> Pas de correction miroir")
+
+        print("MapReversed final :", self.shape.MapReversed)
+        print("=== FIN autoFixMirrorDirection ===\n")
+
+
 # --- Charger la police depuis le INI si présent ---
 def loadFontFromIni(default_font):
     if os.path.exists(ini_path):
@@ -102,236 +372,9 @@ else:
 
     FreeCAD.ActiveDocument.recompute()
 
-
-    class TextAdjustDialog(QtGui.QDialog):
-        def __init__(self, shape):
-            super(TextAdjustDialog, self).__init__()
-            self.shape = shape
-            self.previewObj = None
-
-            self.setWindowTitle("Réglages du texte")
-
-            layout = QtGui.QFormLayout()
-
-            # --- Texte ---
-            self.textEdit = QtGui.QLineEdit(shape.String)
-            self.textEdit.setMinimumWidth(300)
-            layout.addRow("Texte :", self.textEdit)
-            self.textEdit.textChanged.connect(self.applyChanges)
-
-            # --- Police de caractères ---
-            self.fontEdit = QtGui.QLineEdit(FichierPoliceDeCaracteres)
-            self.fontEdit.setMinimumWidth(300)
-            self.fontBtn = QtGui.QPushButton("Choisir…")
-            self.fontBtn.clicked.connect(self.chooseFont)
-
-            fontLayout = QtGui.QHBoxLayout()
-            fontLayout.addWidget(self.fontEdit)
-            fontLayout.addWidget(self.fontBtn)
-            layout.addRow("Police :", fontLayout)
-
-            # --- Taille du texte ---
-            self.sizeSpin = QtGui.QDoubleSpinBox()
-            self.sizeSpin.setRange(0.1, 500)
-            self.sizeSpin.setDecimals(3)
-            self.sizeSpin.setSingleStep(0.5)
-            self.sizeSpin.setValue(shape.Size)
-            layout.addRow("Taille du texte :", self.sizeSpin)
-            self.sizeSpin.valueChanged.connect(self.applyChanges)
-
-            # --- Miroir ---
-            self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
-            self.mirrorCheck.setChecked(shape.MapReversed)
-            layout.addRow(self.mirrorCheck)
-            self.mirrorCheck.toggled.connect(self.applyChanges)
-
-            # --- Offsets ---
-            self.xSpin = QtGui.QDoubleSpinBox()
-            self.ySpin = QtGui.QDoubleSpinBox()
-            self.zSpin = QtGui.QDoubleSpinBox()
-            for spin in (self.xSpin, self.ySpin, self.zSpin):
-                spin.setRange(-1000, 1000)
-                spin.setDecimals(3)
-
-            self.xSpin.setValue(shape.AttachmentOffset.Base.x)
-            self.ySpin.setValue(shape.AttachmentOffset.Base.y)
-            self.zSpin.setValue(shape.AttachmentOffset.Base.z)
-
-            layout.addRow("Offset X :", self.xSpin)
-            layout.addRow("Offset Y :", self.ySpin)
-            layout.addRow("Offset Z :", self.zSpin)
-
-            self.xSpin.valueChanged.connect(self.applyChanges)
-            self.ySpin.valueChanged.connect(self.applyChanges)
-            self.zSpin.valueChanged.connect(self.applyChanges)
-
-            # --- Rotation ---
-            self.rotSpin = QtGui.QDoubleSpinBox()
-            self.rotSpin.setRange(-360, 360)
-            self.rotSpin.setValue(0)
-            layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
-            self.rotSpin.valueChanged.connect(self.applyChanges)
-
-            # --- Pad / Cavité ---
-            self.padSpin = QtGui.QDoubleSpinBox()
-            self.padSpin.setRange(0.1, 1000)
-            self.padSpin.setDecimals(3)
-            self.padSpin.setValue(5)
-
-            self.padCheck = QtGui.QCheckBox("Pad")
-            self.padCheck.toggled.connect(self.onPadToggled)
-
-            padLayout = QtGui.QHBoxLayout()
-            padLayout.addWidget(self.padSpin)
-            padLayout.addWidget(self.padCheck)
-            layout.addRow("Pad :", padLayout)
-
-            self.cavitySpin = QtGui.QDoubleSpinBox()
-            self.cavitySpin.setRange(0.1, 1000)
-            self.cavitySpin.setDecimals(3)
-            self.cavitySpin.setValue(5)
-
-            self.cavityCheck = QtGui.QCheckBox("Cavité")
-            self.cavityCheck.toggled.connect(self.onCavityToggled)
-
-            cavityLayout = QtGui.QHBoxLayout()
-            cavityLayout.addWidget(self.cavitySpin)
-            cavityLayout.addWidget(self.cavityCheck)
-            layout.addRow("Cavité :", cavityLayout)
-
-            # --- Boutons ---
-            btnLayout = QtGui.QHBoxLayout()
-            applyBtn = QtGui.QPushButton("Appliquer")
-            closeBtn = QtGui.QPushButton("Fermer")
-            btnLayout.addWidget(applyBtn)
-            btnLayout.addWidget(closeBtn)
-            layout.addRow(btnLayout)
-
-            applyBtn.clicked.connect(self.applyChanges)
-            closeBtn.clicked.connect(self.close)
-
-            self.setLayout(layout)
-
-        def chooseFont(self):
-            font_path, _ = QtGui.QFileDialog.getOpenFileName(
-                self,
-                "Choisir une police TrueType",
-                "",
-                "Polices (*.ttf *.otf);;Tous les fichiers (*.*)"
-            )
-
-            if font_path:
-                self.fontEdit.setText(font_path)
-                saveFontToIni(font_path)
-                self.shape.FontFile = font_path
-                FreeCAD.ActiveDocument.recompute()
-
-        def applyChanges(self):
-
-            # Texte
-            new_text = self.textEdit.text().strip()
-            if new_text:
-                self.shape.String = new_text
-
-            # Police
-            font_path = self.fontEdit.text().strip()
-            if font_path:
-                self.shape.FontFile = font_path
-                saveFontToIni(font_path)
-
-            # Taille du texte
-            self.shape.Size = self.sizeSpin.value()
-
-            # Miroir
-            self.shape.MapReversed = self.mirrorCheck.isChecked()
-
-            # Offsets
-            self.shape.AttachmentOffset.Base = FreeCAD.Vector(
-                self.xSpin.value(),
-                self.ySpin.value(),
-                self.zSpin.value()
-            )
-
-            # Rotation
-            angle = self.rotSpin.value()
-            rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
-            self.shape.AttachmentOffset.Rotation = rot
-
-            FreeCAD.ActiveDocument.recompute()
-            # preview pad ou cavity
-            if self.padCheck.isChecked():
-                self.showPadPreview()
-            elif self.cavityCheck.isChecked():
-                self.showPocketPreview()
-
-        def onPadToggled(self, checked):
-            if checked:
-                self.cavityCheck.setChecked(False)
-                self.applyChanges()
-                self.showPadPreview()
-            else:
-                self.clearPreview()
-
-        def onCavityToggled(self, checked):
-            if checked:
-                self.padCheck.setChecked(False)
-                self.applyChanges()
-                self.showPocketPreview()
-            else:
-                self.clearPreview()
-
-        def clearPreview(self):
-            doc = FreeCAD.ActiveDocument
-            if hasattr(self, "previewObj") and self.previewObj:
-                try:
-                    doc.removeObject(self.previewObj.Name)
-                except:
-                    pass
-                self.previewObj = None
-                doc.recompute()
-
-        def showPadPreview(self):
-            self.clearPreview()
-            doc = FreeCAD.ActiveDocument
-
-            # Récupérer la forme du ShapeString
-            shape = self.shape.Shape
-
-            # Normale de la face support
-            face = selObj.Shape.getElement(nomFace)
-            normal = face.normalAt(0, 0)
-
-            # Extrusion
-            extruded = shape.extrude(normal * self.padSpin.value())
-
-            # Création de l'objet preview
-            obj = doc.addObject("Part::Feature", "PreviewPad")
-            obj.Shape = extruded
-            obj.ViewObject.Transparency = 70
-            obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)  # bleu clair
-
-            self.previewObj = obj
-            doc.recompute()
-
-
-    def showPocketPreview(self):
-        self.clearPreview()
-        doc = FreeCAD.ActiveDocument
-
-        shape = self.shape.Shape
-        face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
-
-        # Extrusion dans l'autre sens
-        extruded = shape.extrude(normal * (-self.cavitySpin.value()))
-
-        obj = doc.addObject("Part::Feature", "PreviewCavity")
-        obj.Shape = extruded
-        obj.ViewObject.Transparency = 70
-        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
-
-        self.previewObj = obj
-        doc.recompute()
+    # Correction automatique du miroir dès la création
+    tmpDlg = type("Tmp", (), {"shape": nouvelleShapeString})()
+    TextAdjustDialog.autoFixMirrorDirection(tmpDlg)
 
 dlg = TextAdjustDialog(nouvelleShapeString)
 dlg.exec()
@@ -340,34 +383,32 @@ doc = FreeCAD.ActiveDocument
 
 # Si Pad coché
 if dlg.padCheck.isChecked():
+    dlg.autoFixMirrorDirection()
     pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
     pad.Profile = (nouvelleShapeString, ["Face1"])
     pad.Length = dlg.padSpin.value()
     pad.AllowMultiFace = False
     doc.recompute()
+    # FreeCAD vient de casser MapReversed → on le remet
+    nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
+    doc.recompute()
 
 # Si Cavité cochée
 elif dlg.cavityCheck.isChecked():
-
+    dlg.autoFixMirrorDirection()
     pocket = bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
-
     # Profil = ShapeString (pas Face1)
     pocket.Profile = nouvelleShapeString
-
     # Profondeur
     pocket.Length = dlg.cavitySpin.value()
-
     # Obligatoire pour ShapeString
     pocket.AllowMultiFace = False
-
     # Direction = normale de la face support
     pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
 
-    # Comme FreeCAD quand tu valides l’éditeur
-    #pocket.AlongSketchNormal = True
-
-
-    #doc.purgeTouched()
+    doc.recompute()
+    # FreeCAD vient de casser MapReversed → on le remet
+    nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
     doc.recompute()
 
     # Optionnel : masquer le ShapeString
