@@ -1,4 +1,5 @@
-from PySide import QtGui
+from PySide import QtGui, QtCore
+
 import FreeCADGui, FreeCAD, Draft
 from statistics import mean
 import os
@@ -114,11 +115,11 @@ else:
             self.textEdit = QtGui.QLineEdit(shape.String)
             self.textEdit.setMinimumWidth(300)
             layout.addRow("Texte :", self.textEdit)
+            self.textEdit.textChanged.connect(self.applyChanges)
 
             # --- Police de caractères ---
             self.fontEdit = QtGui.QLineEdit(FichierPoliceDeCaracteres)
             self.fontEdit.setMinimumWidth(300)
-
             self.fontBtn = QtGui.QPushButton("Choisir…")
             self.fontBtn.clicked.connect(self.chooseFont)
 
@@ -134,11 +135,13 @@ else:
             self.sizeSpin.setSingleStep(0.5)
             self.sizeSpin.setValue(shape.Size)
             layout.addRow("Taille du texte :", self.sizeSpin)
+            self.sizeSpin.valueChanged.connect(self.applyChanges)
 
             # --- Miroir ---
             self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
             self.mirrorCheck.setChecked(shape.MapReversed)
             layout.addRow(self.mirrorCheck)
+            self.mirrorCheck.toggled.connect(self.applyChanges)
 
             # --- Offsets ---
             self.xSpin = QtGui.QDoubleSpinBox()
@@ -156,11 +159,43 @@ else:
             layout.addRow("Offset Y :", self.ySpin)
             layout.addRow("Offset Z :", self.zSpin)
 
+            self.xSpin.valueChanged.connect(self.applyChanges)
+            self.ySpin.valueChanged.connect(self.applyChanges)
+            self.zSpin.valueChanged.connect(self.applyChanges)
+
             # --- Rotation ---
             self.rotSpin = QtGui.QDoubleSpinBox()
             self.rotSpin.setRange(-360, 360)
             self.rotSpin.setValue(0)
             layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+            self.rotSpin.valueChanged.connect(self.applyChanges)
+
+            # --- Pad / Cavité ---
+            self.padSpin = QtGui.QDoubleSpinBox()
+            self.padSpin.setRange(0.1, 1000)
+            self.padSpin.setDecimals(3)
+            self.padSpin.setValue(5)
+
+            self.padCheck = QtGui.QCheckBox("Pad")
+            self.padCheck.toggled.connect(self.onPadToggled)
+
+            padLayout = QtGui.QHBoxLayout()
+            padLayout.addWidget(self.padSpin)
+            padLayout.addWidget(self.padCheck)
+            layout.addRow("Pad :", padLayout)
+
+            self.cavitySpin = QtGui.QDoubleSpinBox()
+            self.cavitySpin.setRange(0.1, 1000)
+            self.cavitySpin.setDecimals(3)
+            self.cavitySpin.setValue(5)
+
+            self.cavityCheck = QtGui.QCheckBox("Cavité")
+            self.cavityCheck.toggled.connect(self.onCavityToggled)
+
+            cavityLayout = QtGui.QHBoxLayout()
+            cavityLayout.addWidget(self.cavitySpin)
+            cavityLayout.addWidget(self.cavityCheck)
+            layout.addRow("Cavité :", cavityLayout)
 
             # --- Boutons ---
             btnLayout = QtGui.QHBoxLayout()
@@ -222,7 +257,55 @@ else:
 
             FreeCAD.ActiveDocument.recompute()
 
+        def onPadToggled(self, checked):
+            # On ne réagit que quand Pad est COCHÉ
+            if checked:
+                self.cavityCheck.setChecked(False)
+
+        def onCavityToggled(self, checked):
+            # On ne réagit que quand Cavité est COCHÉE
+            if checked:
+                self.padCheck.setChecked(False)
 
 
-    dlg = TextAdjustDialog(nouvelleShapeString)
-    dlg.exec()
+
+dlg = TextAdjustDialog(nouvelleShapeString)
+dlg.exec()
+
+doc = FreeCAD.ActiveDocument
+
+# Si Pad coché
+if dlg.padCheck.isChecked():
+    pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
+    pad.Profile = (nouvelleShapeString, ["Face1"])
+    pad.Length = dlg.padSpin.value()
+    pad.AllowMultiFace = False
+    doc.recompute()
+
+# Si Cavité cochée
+elif dlg.cavityCheck.isChecked():
+
+    pocket = bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
+
+    # Profil = ShapeString (pas Face1)
+    pocket.Profile = nouvelleShapeString
+
+    # Profondeur
+    pocket.Length = dlg.cavitySpin.value()
+
+    # Obligatoire pour ShapeString
+    pocket.AllowMultiFace = False
+
+    # Direction = normale de la face support
+    pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
+
+    # Comme FreeCAD quand tu valides l’éditeur
+    #pocket.AlongSketchNormal = True
+
+
+    #doc.purgeTouched()
+    doc.recompute()
+
+    # Optionnel : masquer le ShapeString
+    nouvelleShapeString.ViewObject.Visibility = False
+
