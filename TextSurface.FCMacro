@@ -249,38 +249,52 @@ class TextAdjustDialog(QtGui.QDialog):
     def autoFixMirrorDirection(self):
         print("\n=== autoFixMirrorDirection ===")
 
-        # Axe X local du texte
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+        normal.normalize()
+        print("Normale :", normal)
+
+        # --- CAS 1 : Face horizontale ---
+        if abs(normal.z) > 0.999:
+            if normal.z < 0:
+                print("Face horizontale vers le BAS → miroir ON")
+                self.shape.MapReversed = True
+                # si le dialog existe, on met à jour la case
+                if hasattr(self, "mirrorCheck"):
+                    self.mirrorCheck.setChecked(True)
+            else:
+                print("Face horizontale vers le HAUT → miroir OFF")
+                self.shape.MapReversed = False
+                if hasattr(self, "mirrorCheck"):
+                    self.mirrorCheck.setChecked(False)
+
+            FreeCAD.ActiveDocument.recompute()
+            print("=== FIN autoFixMirrorDirection ===\n")
+            return
+
+        # --- CAS 2 : Face non horizontale → détection normale ---
         x_local = self.shape.AttachmentOffset.Rotation.multVec(FreeCAD.Vector(1, 0, 0))
         x_local.normalize()
         print("Axe X local :", x_local)
 
-        # Normale géométrique de la face
-        face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
-        normal.normalize()
-        print("Normale géométrique :", normal)
-
-        # Projection de la normale dans le plan XY
         proj = FreeCAD.Vector(normal.x, normal.y, 0)
         if proj.Length == 0:
-            print(">>> Face horizontale : pas de détection automatique")
+            print("Projection nulle → pas de détection")
             return
 
         proj.normalize()
-        print("Projection dans le plan :", proj)
+        print("Projection :", proj)
 
-        # Comparaison
         dot = x_local.dot(proj)
-        print("Dot product X_local / proj :", dot)
+        print("Dot product :", dot)
 
         if dot < 0:
-            print(">>> Correction miroir : inversion MapReversed")
+            print("Correction miroir")
             self.shape.MapReversed = not self.shape.MapReversed
-            self.mirrorCheck.setChecked(self.shape.MapReversed)
-            FreeCAD.ActiveDocument.recompute()
-        else:
-            print(">>> Pas de correction miroir")
+            if hasattr(self, "mirrorCheck"):
+                self.mirrorCheck.setChecked(self.shape.MapReversed)
 
+        FreeCAD.ActiveDocument.recompute()
         print("MapReversed final :", self.shape.MapReversed)
         print("=== FIN autoFixMirrorDirection ===\n")
 
@@ -374,6 +388,11 @@ else:
 
     # Correction automatique du miroir dès la création
     tmpDlg = type("Tmp", (), {"shape": nouvelleShapeString})()
+    ##########################" pour le print, après on retire
+    face = selObj.Shape.getElement(nomFace)
+    normal = face.normalAt(0, 0)
+    print("Normale de la face sélectionnée :", normal)
+    ##########################################################"
     TextAdjustDialog.autoFixMirrorDirection(tmpDlg)
 
 dlg = TextAdjustDialog(nouvelleShapeString)
@@ -383,6 +402,11 @@ doc = FreeCAD.ActiveDocument
 
 # Si Pad coché
 if dlg.padCheck.isChecked():
+    ##########################" pour le print, après on retire
+    face = selObj.Shape.getElement(nomFace)
+    normal = face.normalAt(0, 0)
+    print("Normale de la face sélectionnée :", normal)
+    ##########################################################"
     dlg.autoFixMirrorDirection()
     pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
     pad.Profile = (nouvelleShapeString, ["Face1"])
@@ -413,4 +437,5 @@ elif dlg.cavityCheck.isChecked():
 
     # Optionnel : masquer le ShapeString
     nouvelleShapeString.ViewObject.Visibility = False
+
 
