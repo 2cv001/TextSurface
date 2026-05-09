@@ -107,6 +107,8 @@ else:
         def __init__(self, shape):
             super(TextAdjustDialog, self).__init__()
             self.shape = shape
+            self.previewObj = None
+
             self.setWindowTitle("Réglages du texte")
 
             layout = QtGui.QFormLayout()
@@ -256,22 +258,84 @@ else:
             self.shape.AttachmentOffset.Rotation = rot
 
             FreeCAD.ActiveDocument.recompute()
+            # preview pad ou cavity
+            if self.padCheck.isChecked():
+                self.showPadPreview()
+            elif self.cavityCheck.isChecked():
+                self.showPocketPreview()
 
         def onPadToggled(self, checked):
-            # On ne réagit que quand Pad est COCHÉ
             if checked:
                 self.cavityCheck.setChecked(False)
+                self.applyChanges()
+                self.showPadPreview()
+            else:
+                self.clearPreview()
 
         def onCavityToggled(self, checked):
-            # On ne réagit que quand Cavité est COCHÉE
             if checked:
                 self.padCheck.setChecked(False)
+                self.applyChanges()
+                self.showPocketPreview()
+            else:
+                self.clearPreview()
+
+        def clearPreview(self):
+            doc = FreeCAD.ActiveDocument
+            if hasattr(self, "previewObj") and self.previewObj:
+                try:
+                    doc.removeObject(self.previewObj.Name)
+                except:
+                    pass
+                self.previewObj = None
+                doc.recompute()
+
+        def showPadPreview(self):
+            self.clearPreview()
+            doc = FreeCAD.ActiveDocument
+
+            # Récupérer la forme du ShapeString
+            shape = self.shape.Shape
+
+            # Normale de la face support
+            face = selObj.Shape.getElement(nomFace)
+            normal = face.normalAt(0, 0)
+
+            # Extrusion
+            extruded = shape.extrude(normal * self.padSpin.value())
+
+            # Création de l'objet preview
+            obj = doc.addObject("Part::Feature", "PreviewPad")
+            obj.Shape = extruded
+            obj.ViewObject.Transparency = 70
+            obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)  # bleu clair
+
+            self.previewObj = obj
+            doc.recompute()
 
 
+    def showPocketPreview(self):
+        self.clearPreview()
+        doc = FreeCAD.ActiveDocument
+
+        shape = self.shape.Shape
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+
+        # Extrusion dans l'autre sens
+        extruded = shape.extrude(normal * (-self.cavitySpin.value()))
+
+        obj = doc.addObject("Part::Feature", "PreviewCavity")
+        obj.Shape = extruded
+        obj.ViewObject.Transparency = 70
+        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
+
+        self.previewObj = obj
+        doc.recompute()
 
 dlg = TextAdjustDialog(nouvelleShapeString)
 dlg.exec()
-
+dlg.clearPreview()
 doc = FreeCAD.ActiveDocument
 
 # Si Pad coché
