@@ -29,7 +29,7 @@ class TextAdjustDialog(QtGui.QDialog):
         self.textEdit = QtGui.QLineEdit(shape.String)
         self.textEdit.setMinimumWidth(300)
         layout.addRow("Texte :", self.textEdit)
-        self.textEdit.textChanged.connect(self.applyChanges)
+        self.textEdit.textChanged.connect(self.onUserChangedSomething)
 
         # --- Police de caractères ---
         self.fontEdit = QtGui.QLineEdit(FichierPoliceDeCaracteres)
@@ -49,13 +49,13 @@ class TextAdjustDialog(QtGui.QDialog):
         self.sizeSpin.setSingleStep(0.5)
         self.sizeSpin.setValue(shape.Size)
         layout.addRow("Taille du texte :", self.sizeSpin)
-        self.sizeSpin.valueChanged.connect(self.applyChanges)
+        self.sizeSpin.valueChanged.connect(self.onUserChangedSomething)
 
         # --- Miroir ---
         self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
         self.mirrorCheck.setChecked(shape.MapReversed)
         layout.addRow(self.mirrorCheck)
-        self.mirrorCheck.toggled.connect(self.applyChanges)
+        self.mirrorCheck.toggled.connect(self.onUserChangedSomething)
 
         # --- Offsets ---
         self.xSpin = QtGui.QDoubleSpinBox()
@@ -73,22 +73,22 @@ class TextAdjustDialog(QtGui.QDialog):
         layout.addRow("Offset Y :", self.ySpin)
         layout.addRow("Offset Z :", self.zSpin)
 
-        self.xSpin.valueChanged.connect(self.applyChanges)
-        self.ySpin.valueChanged.connect(self.applyChanges)
-        self.zSpin.valueChanged.connect(self.applyChanges)
+        self.xSpin.valueChanged.connect(self.onUserChangedSomething)
+        self.ySpin.valueChanged.connect(self.onUserChangedSomething)
+        self.zSpin.valueChanged.connect(self.onUserChangedSomething)
 
         # --- Rotation ---
         self.rotSpin = QtGui.QDoubleSpinBox()
         self.rotSpin.setRange(-360, 360)
         self.rotSpin.setValue(0)
         layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
-        self.rotSpin.valueChanged.connect(self.applyChanges)
+        self.rotSpin.valueChanged.connect(self.onUserChangedSomething)
 
         # --- Pad / Cavité ---
         self.padSpin = QtGui.QDoubleSpinBox()
         self.padSpin.setRange(0.1, 1000)
         self.padSpin.setDecimals(3)
-        self.padSpin.setValue(5)
+        self.padSpin.setValue(1)
 
         self.padCheck = QtGui.QCheckBox("Pad")
         self.padCheck.toggled.connect(self.onPadToggled)
@@ -101,26 +101,45 @@ class TextAdjustDialog(QtGui.QDialog):
         self.cavitySpin = QtGui.QDoubleSpinBox()
         self.cavitySpin.setRange(0.1, 1000)
         self.cavitySpin.setDecimals(3)
-        self.cavitySpin.setValue(5)
+        self.cavitySpin.setValue(1)
 
         self.cavityCheck = QtGui.QCheckBox("Cavité")
         self.cavityCheck.toggled.connect(self.onCavityToggled)
+
+        self.padSpin.valueChanged.connect(self.onUserChangedSomething)
+        self.cavitySpin.valueChanged.connect(self.onUserChangedSomething)
+        # Mise à jour du preview uniquement si livePreview est activé
+        self.padSpin.valueChanged.connect(self.onDepthChanged)
+        self.cavitySpin.valueChanged.connect(self.onDepthChanged)
 
         cavityLayout = QtGui.QHBoxLayout()
         cavityLayout.addWidget(self.cavitySpin)
         cavityLayout.addWidget(self.cavityCheck)
         layout.addRow("Cavité :", cavityLayout)
+        # --- Voir en temps réel ---
+        self.livePreviewCheck = QtGui.QCheckBox("Voir en temps réel")
+        self.livePreviewCheck.setChecked(False)
+        layout.addRow(self.livePreviewCheck)
 
         # --- Boutons ---
         btnLayout = QtGui.QHBoxLayout()
-        applyBtn = QtGui.QPushButton("Valider")
-        cancelBtn = QtGui.QPushButton("Abandon")
-        btnLayout.addWidget(applyBtn)
-        btnLayout.addWidget(cancelBtn)
-        layout.addRow(btnLayout)
 
-        applyBtn.clicked.connect(self.onAccept)
+        # Bouton Appliquer (met à jour le preview)
+        applyPreviewBtn = QtGui.QPushButton("Appliquer")
+        applyPreviewBtn.clicked.connect(self.updatePreview)
+        btnLayout.addWidget(applyPreviewBtn)
+
+        # Bouton Valider (crée le Pad/Cavité)
+        validateBtn = QtGui.QPushButton("Valider")
+        validateBtn.clicked.connect(self.onAccept)
+        btnLayout.addWidget(validateBtn)
+
+        # Bouton Abandon
+        cancelBtn = QtGui.QPushButton("Abandon")
         cancelBtn.clicked.connect(self.reject)
+        btnLayout.addWidget(cancelBtn)
+
+        layout.addRow(btnLayout)
 
         self.setLayout(layout)
 
@@ -141,53 +160,56 @@ class TextAdjustDialog(QtGui.QDialog):
             self.fontEdit.setText(font_path)
             saveFontToIni(font_path)
             self.shape.FontFile = font_path
-            FreeCAD.ActiveDocument.recompute()
+            #FreeCAD.ActiveDocument.recompute()
 
-    def applyChanges(self):
+    def applyChanges(self, forcePreview=False):
 
-        # Texte
+        # Toujours appliquer les valeurs au ShapeString
         new_text = self.textEdit.text().strip()
         if new_text:
             self.shape.String = new_text
 
-        # Police
         font_path = self.fontEdit.text().strip()
         if font_path:
             self.shape.FontFile = font_path
             saveFontToIni(font_path)
 
-        # Taille du texte
         self.shape.Size = self.sizeSpin.value()
 
-        # Miroir
-        # Ne réécrire MapReversed que si l’utilisateur a vraiment cliqué la case
         if self.mirrorCheck.hasFocus():
             self.shape.MapReversed = self.mirrorCheck.isChecked()
 
-        # Offsets
         self.shape.AttachmentOffset.Base = FreeCAD.Vector(
             self.xSpin.value(),
             self.ySpin.value(),
             self.zSpin.value()
         )
 
-        # Rotation
         angle = self.rotSpin.value()
         rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
         self.shape.AttachmentOffset.Rotation = rot
 
+        # Si pas de preview demandé → on s'arrête ici
+        if not self.livePreviewCheck.isChecked() and not forcePreview:
+            return
+
+        #Recompute + preview
         FreeCAD.ActiveDocument.recompute()
-        # preview pad ou cavity
+
         if self.padCheck.isChecked():
             self.showPadPreview()
         elif self.cavityCheck.isChecked():
             self.showPocketPreview()
 
+
     def onPadToggled(self, checked):
         if checked:
             self.cavityCheck.setChecked(False)
             self.applyChanges()
-            self.showPadPreview()
+            if self.livePreviewCheck.isChecked():
+                self.showPadPreview()
+            else:
+                self.clearPreview()
         else:
             self.clearPreview()
 
@@ -195,7 +217,10 @@ class TextAdjustDialog(QtGui.QDialog):
         if checked:
             self.padCheck.setChecked(False)
             self.applyChanges()
-            self.showPocketPreview()
+            if self.livePreviewCheck.isChecked():
+                self.showPocketPreview()
+            else:
+                self.clearPreview()
         else:
             self.clearPreview()
 
@@ -207,7 +232,7 @@ class TextAdjustDialog(QtGui.QDialog):
             except:
                 pass
             self.previewObj = None
-            doc.recompute()
+
 
     def showPadPreview(self):
         self.clearPreview()
@@ -232,7 +257,7 @@ class TextAdjustDialog(QtGui.QDialog):
         self.previewObj = obj
         doc.recompute()
 
-    def showPocketPreview(self):
+    def OLDshowPocketPreview(self):
         self.clearPreview()
         doc = FreeCAD.ActiveDocument
 
@@ -251,57 +276,99 @@ class TextAdjustDialog(QtGui.QDialog):
         self.previewObj = obj
         doc.recompute()
 
+    def showPocketPreview(self):
+        self.clearPreview()
+        doc = FreeCAD.ActiveDocument
+
+        shape = self.shape.Shape
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+
+        # Extrusion vers l'extérieur (comme le Pad)
+        extruded = shape.extrude(normal * self.cavitySpin.value())
+
+        obj = doc.addObject("Part::Feature", "PreviewCavity")
+        obj.Shape = extruded
+        obj.ViewObject.Transparency = 70
+        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
+
+        self.previewObj = obj
+        doc.recompute()
+
     def autoFixMirrorDirection(self):
         print("\n=== autoFixMirrorDirection ===")
 
+        # --- Normale de la face ---
         face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
-        normal.normalize()
-        print("Normale :", normal)
+        normal_face = face.normalAt(0, 0)
+        normal_face.normalize()
+        print("Normale de la face :", normal_face)
 
         # --- CAS 1 : Face horizontale ---
-        if abs(normal.z) > 0.999:
-            if normal.z < 0:
-                print("Face horizontale vers le BAS → miroir ON")
+        if abs(normal_face.z) > 0.999:
+            print("Face horizontale détectée")
+
+            if normal_face.z < 0:
+                print("→ Face vers le BAS → texte doit être retourné")
                 self.shape.MapReversed = True
-                # si le dialog existe, on met à jour la case
-                if hasattr(self, "mirrorCheck"):
-                    self.mirrorCheck.setChecked(True)
             else:
-                print("Face horizontale vers le HAUT → miroir OFF")
+                print("→ Face vers le HAUT → texte normal")
                 self.shape.MapReversed = False
-                if hasattr(self, "mirrorCheck"):
-                    self.mirrorCheck.setChecked(False)
 
-            FreeCAD.ActiveDocument.recompute()
-            print("=== FIN autoFixMirrorDirection ===\n")
-            return
-
-        # --- CAS 2 : Face non horizontale → détection normale ---
-        x_local = self.shape.AttachmentOffset.Rotation.multVec(FreeCAD.Vector(1, 0, 0))
-        x_local.normalize()
-        print("Axe X local :", x_local)
-
-        proj = FreeCAD.Vector(normal.x, normal.y, 0)
-        if proj.Length == 0:
-            print("Projection nulle → pas de détection")
-            return
-
-        proj.normalize()
-        print("Projection :", proj)
-
-        dot = x_local.dot(proj)
-        print("Dot product :", dot)
-
-        if dot < 0:
-            print("Correction miroir")
-            self.shape.MapReversed = not self.shape.MapReversed
             if hasattr(self, "mirrorCheck"):
                 self.mirrorCheck.setChecked(self.shape.MapReversed)
 
-        FreeCAD.ActiveDocument.recompute()
+            FreeCAD.ActiveDocument.recompute()
+            print("MapReversed final :", self.shape.MapReversed)
+            print("=== FIN autoFixMirrorDirection ===\n")
+            return
+
+        # --- CAS 2 : Face non horizontale ---
+        print("Face NON horizontale → analyse des normales")
+
+        # Rotation globale du texte
+        global_rot = self.shape.getGlobalPlacement().Rotation
+
+        # Normale réelle du texte (axe Z local global)
+        normal_text = global_rot.multVec(FreeCAD.Vector(0, 0, 1))
+        normal_text.normalize()
+        print("Normale du texte (Z local global) :", normal_text)
+
+        # Produit scalaire face/text
+        dot = normal_text.dot(normal_face)
+        print("Dot(face, texte) :", dot)
+
+        # Interprétation
+        if dot < 0:
+            print("→ Les normales sont OPPOSÉES → FreeCAD a retourné le texte")
+            print("→ On inverse MapReversed pour corriger")
+            self.shape.MapReversed = not self.shape.MapReversed
+        else:
+            print("→ Les normales sont cohérentes → pas de correction")
+
+        # Mise à jour de la case à cocher
+        if hasattr(self, "mirrorCheck"):
+            self.mirrorCheck.setChecked(self.shape.MapReversed)
+
         print("MapReversed final :", self.shape.MapReversed)
         print("=== FIN autoFixMirrorDirection ===\n")
+
+
+    def onDepthChanged(self):
+        if self.livePreviewCheck.isChecked():
+            if self.padCheck.isChecked():
+                self.showPadPreview()
+            elif self.cavityCheck.isChecked():
+                self.showPocketPreview()
+
+    def updatePreview(self):
+        # Appliquer les changements même si temps réel est OFF
+        self.applyChanges(forcePreview=True)
+
+    def onUserChangedSomething(self):
+        if self.livePreviewCheck.isChecked():
+            self.applyChanges()
+        # sinon → ne rien faire
 
 
 # --- Charger la police depuis le INI si présent ---
