@@ -113,16 +113,21 @@ class TextAdjustDialog(QtGui.QDialog):
 
         # --- Boutons ---
         btnLayout = QtGui.QHBoxLayout()
-        applyBtn = QtGui.QPushButton("Appliquer")
-        closeBtn = QtGui.QPushButton("Fermer")
+        applyBtn = QtGui.QPushButton("Valider")
+        cancelBtn = QtGui.QPushButton("Abandon")
         btnLayout.addWidget(applyBtn)
-        btnLayout.addWidget(closeBtn)
+        btnLayout.addWidget(cancelBtn)
         layout.addRow(btnLayout)
 
-        applyBtn.clicked.connect(self.applyChanges)
-        closeBtn.clicked.connect(self.close)
+        applyBtn.clicked.connect(self.onAccept)
+        cancelBtn.clicked.connect(self.reject)
 
         self.setLayout(layout)
+
+    def onAccept(self):
+        self.applyChanges()
+        self.accept()
+
 
     def chooseFont(self):
         font_path, _ = QtGui.QFileDialog.getOpenFileName(
@@ -368,6 +373,8 @@ else:
     plm = FreeCAD.Placement()
     plm.Base = FreeCAD.Vector(0, 0, 0)
     plm.Rotation.Q = (0, 0, 0, 0)
+    ###### tester plm.Rotation.Q = (0, 0, 0, 1)
+
     nouvelleShapeString.Placement = plm
     nouvelleShapeString.AttachmentSupport = None
 
@@ -396,46 +403,54 @@ else:
     TextAdjustDialog.autoFixMirrorDirection(tmpDlg)
 
 dlg = TextAdjustDialog(nouvelleShapeString)
-dlg.exec()
+result = dlg.exec()
 dlg.clearPreview()
-doc = FreeCAD.ActiveDocument
 
-# Si Pad coché
-if dlg.padCheck.isChecked():
-    ##########################" pour le print, après on retire
-    face = selObj.Shape.getElement(nomFace)
-    normal = face.normalAt(0, 0)
-    print("Normale de la face sélectionnée :", normal)
-    ##########################################################"
-    dlg.autoFixMirrorDirection()
-    pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
-    pad.Profile = (nouvelleShapeString, ["Face1"])
-    pad.Length = dlg.padSpin.value()
-    pad.AllowMultiFace = False
-    doc.recompute()
-    # FreeCAD vient de casser MapReversed → on le remet
-    nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
-    doc.recompute()
+# Si l'utilisateur annule → on sort proprement
+if result != QtGui.QDialog.Accepted:
+    print("Action annulée par l'utilisateur")
+    FreeCAD.ActiveDocument.removeObject(nouvelleShapeString.Name)
+    FreeCAD.ActiveDocument.recompute()
 
-# Si Cavité cochée
-elif dlg.cavityCheck.isChecked():
-    dlg.autoFixMirrorDirection()
-    pocket = bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
-    # Profil = ShapeString (pas Face1)
-    pocket.Profile = nouvelleShapeString
-    # Profondeur
-    pocket.Length = dlg.cavitySpin.value()
-    # Obligatoire pour ShapeString
-    pocket.AllowMultiFace = False
-    # Direction = normale de la face support
-    pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
+else:
+    doc = FreeCAD.ActiveDocument
 
-    doc.recompute()
-    # FreeCAD vient de casser MapReversed → on le remet
-    nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
-    doc.recompute()
+    # Si Pad coché
+    if dlg.padCheck.isChecked():
+        ##########################" pour le print, après on retire
+        face = selObj.Shape.getElement(nomFace)
+        normal = face.normalAt(0, 0)
+        print("Normale de la face sélectionnée :", normal)
+        ##########################################################"
+        dlg.autoFixMirrorDirection()
+        pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
+        pad.Profile = (nouvelleShapeString, ["Face1"])
+        pad.Length = dlg.padSpin.value()
+        pad.AllowMultiFace = False
+        doc.recompute()
+        # FreeCAD vient de casser MapReversed → on le remet
+        nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
+        doc.recompute()
 
-    # Optionnel : masquer le ShapeString
-    nouvelleShapeString.ViewObject.Visibility = False
+    # Si Cavité cochée
+    elif dlg.cavityCheck.isChecked():
+        dlg.autoFixMirrorDirection()
+        pocket = bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
+        # Profil = ShapeString (pas Face1)
+        pocket.Profile = nouvelleShapeString
+        # Profondeur
+        pocket.Length = dlg.cavitySpin.value()
+        # Obligatoire pour ShapeString
+        pocket.AllowMultiFace = False
+        # Direction = normale de la face support
+        pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
+
+        doc.recompute()
+        # FreeCAD vient de casser MapReversed → on le remet
+        nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
+        doc.recompute()
+
+        # Optionnel : masquer le ShapeString
+        nouvelleShapeString.ViewObject.Visibility = False
 
 
