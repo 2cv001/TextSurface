@@ -194,7 +194,8 @@ class TextAdjustDialog(QtGui.QDialog):
             return
 
         #Recompute + preview
-        FreeCAD.ActiveDocument.recompute()
+        self.shape.recompute()
+        #FreeCAD.ActiveDocument.recompute()
 
         if self.padCheck.isChecked():
             self.showPadPreview()
@@ -255,26 +256,9 @@ class TextAdjustDialog(QtGui.QDialog):
         obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)  # bleu clair
 
         self.previewObj = obj
-        doc.recompute()
+        #doc.recompute()
 
-    def OLDshowPocketPreview(self):
-        self.clearPreview()
-        doc = FreeCAD.ActiveDocument
 
-        shape = self.shape.Shape
-        face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
-
-        # Extrusion dans l'autre sens
-        extruded = shape.extrude(normal * (-self.cavitySpin.value()))
-
-        obj = doc.addObject("Part::Feature", "PreviewCavity")
-        obj.Shape = extruded
-        obj.ViewObject.Transparency = 70
-        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
-
-        self.previewObj = obj
-        doc.recompute()
 
     def showPocketPreview(self):
         self.clearPreview()
@@ -293,7 +277,7 @@ class TextAdjustDialog(QtGui.QDialog):
         obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
 
         self.previewObj = obj
-        doc.recompute()
+        #doc.recompute()
 
     def autoFixMirrorDirection(self):
         print("\n=== autoFixMirrorDirection ===")
@@ -318,7 +302,7 @@ class TextAdjustDialog(QtGui.QDialog):
             if hasattr(self, "mirrorCheck"):
                 self.mirrorCheck.setChecked(self.shape.MapReversed)
 
-            FreeCAD.ActiveDocument.recompute()
+            # FreeCAD.ActiveDocument.recompute()
             print("MapReversed final :", self.shape.MapReversed)
             print("=== FIN autoFixMirrorDirection ===\n")
             return
@@ -446,7 +430,7 @@ else:
     nouvelleShapeString.AttachmentSupport = None
 
     bodyOfFace.addObjects([nouvelleShapeString])
-    FreeCAD.ActiveDocument.recompute()
+    #FreeCAD.ActiveDocument.recompute()
 
     nouvelleShapeString.AttachmentOffset = FreeCAD.Placement(
         FreeCAD.Vector(0, 0, 0),
@@ -458,7 +442,8 @@ else:
     nouvelleShapeString.MapMode = 'InertialCS'
     nouvelleShapeString.Justification = u"Middle-Center"
 
-    FreeCAD.ActiveDocument.recompute()
+    # FreeCAD.ActiveDocument.recompute()
+    nouvelleShapeString.recompute()
 
     # Correction automatique du miroir dès la création
     tmpDlg = type("Tmp", (), {"shape": nouvelleShapeString})()
@@ -477,7 +462,7 @@ dlg.clearPreview()
 if result != QtGui.QDialog.Accepted:
     print("Action annulée par l'utilisateur")
     FreeCAD.ActiveDocument.removeObject(nouvelleShapeString.Name)
-    FreeCAD.ActiveDocument.recompute()
+    #FreeCAD.ActiveDocument.recompute()
 
 else:
     doc = FreeCAD.ActiveDocument
@@ -494,10 +479,10 @@ else:
         pad.Profile = (nouvelleShapeString, ["Face1"])
         pad.Length = dlg.padSpin.value()
         pad.AllowMultiFace = False
-        doc.recompute()
+        # doc.recompute()
         # FreeCAD vient de casser MapReversed → on le remet
         nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
-        doc.recompute()
+        # doc.recompute()
 
     # Si Cavité cochée
     elif dlg.cavityCheck.isChecked():
@@ -512,10 +497,10 @@ else:
         # Direction = normale de la face support
         pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
 
-        doc.recompute()
+        #doc.recompute()
         # FreeCAD vient de casser MapReversed → on le remet
         nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
-        doc.recompute()
+        #doc.recompute()
 
         # Optionnel : masquer le ShapeString
         nouvelleShapeString.ViewObject.Visibility = False
