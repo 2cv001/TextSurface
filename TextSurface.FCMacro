@@ -13,6 +13,7 @@ macro_path = os.path.dirname(macro_fullpath)
 macro_name = os.path.splitext(os.path.basename(macro_fullpath))[0]
 # Chemin du fichier INI
 ini_path = os.path.join(macro_path, macro_name + ".ini")
+OFFSET_INITIAL = 0.001
 
 
 class TextAdjustDialog(QtGui.QDialog):
@@ -20,6 +21,7 @@ class TextAdjustDialog(QtGui.QDialog):
         super(TextAdjustDialog, self).__init__()
         self.shape = shape
         self.previewObj = None
+
 
         self.setWindowTitle("Réglages du texte")
 
@@ -144,9 +146,13 @@ class TextAdjustDialog(QtGui.QDialog):
         self.setLayout(layout)
 
     def onAccept(self):
+        # Appliquer les changements
         self.applyChanges()
+        # Si l'utilisateur n'a pas modifié l'offset Z, on le remet à 0
+        if abs(self.shape.AttachmentOffset.Base.z - OFFSET_INITIAL) < 1e-6:
+            self.shape.AttachmentOffset.Base.z = 0.0
+        # Fermer le dialogue
         self.accept()
-
 
     def chooseFont(self):
         font_path, _ = QtGui.QFileDialog.getOpenFileName(
@@ -441,6 +447,9 @@ else:
     nouvelleShapeString.MapPathParameter = 0.0
     nouvelleShapeString.MapMode = 'InertialCS'
     nouvelleShapeString.Justification = u"Middle-Center"
+    # Décalage anti‑masquage (évite que le texte soit dans la face)
+
+    nouvelleShapeString.AttachmentOffset.Base.z = OFFSET_INITIAL
 
     # FreeCAD.ActiveDocument.recompute()
     nouvelleShapeString.recompute()
