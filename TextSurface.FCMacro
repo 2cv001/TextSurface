@@ -438,6 +438,13 @@ def saveFontToIni(font_path):
         pass
 
 
+def findBodyOf(obj):
+    while obj:
+        if obj.TypeId == "PartDesign::Body":
+            return obj
+        obj = obj.getParentGeoFeatureGroup()
+    return None
+
 #====================================================
 # programme principal
 #====================================================
@@ -456,15 +463,26 @@ FichierPoliceDeCaracteres = loadFontFromIni(DefaultFont)
 # --- Vérification de la sélection ---
 selEx = FreeCADGui.Selection.getSelectionEx()
 
-if (not selEx
+# Conditions d’erreur
+invalid = (
+    not selEx
     or not selEx[0].SubElementNames
     or not selEx[0].SubObjects
-    or selEx[0].SubObjects[0].ShapeType != "Face"):
+    or selEx[0].SubObjects[0].ShapeType != "Face"
+)
 
+if not invalid:
+    # Vérifier que la face appartient à un Body
+    selObj = selEx[0].Object
+    bodyOfFace = findBodyOf(selObj)
+    if bodyOfFace is None:
+        invalid = True
+
+if invalid:
     QtGui.QMessageBox.warning(
         None,
-        "Sélection manquante",
-        "Sélectionnez la face où vous souhaitez placer le texte avant de lancer la macro."
+        "Sélection invalide",
+        "Sélectionnez une FACE appartenant à un Body PartDesign."
     )
 else:
 
@@ -473,13 +491,6 @@ else:
 
     TailleCaracteres = 4
     TextParDefaut = "Text"
-
-    def findBodyOf(obj):
-        while obj:
-            if obj.TypeId == "PartDesign::Body":
-                return obj
-            obj = obj.getParentGeoFeatureGroup()
-        return None
 
     bodyOfFace = findBodyOf(selObj)
 
