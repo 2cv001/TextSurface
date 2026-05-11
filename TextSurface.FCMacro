@@ -418,6 +418,11 @@ def saveFontToIni(font_path):
     except:
         pass
 
+
+#====================================================
+# programme principal
+#====================================================
+
 # --- Déterminer la police par défaut selon OS ---
 if os.name == 'nt':
     DefaultFont = "C:/Windows/Fonts/ARIAL.TTF"
@@ -432,7 +437,11 @@ FichierPoliceDeCaracteres = loadFontFromIni(DefaultFont)
 # --- Vérification de la sélection ---
 selEx = FreeCADGui.Selection.getSelectionEx()
 
-if not selEx or not selEx[0].SubElementNames or not selEx[0].SubObjects:
+if (not selEx
+    or not selEx[0].SubElementNames
+    or not selEx[0].SubObjects
+    or selEx[0].SubObjects[0].ShapeType != "Face"):
+
     QtGui.QMessageBox.warning(
         None,
         "Sélection manquante",
