@@ -232,58 +232,93 @@ class TextAdjustDialog(QtGui.QDialog):
             self.clearPreview()
 
     def clearPreview(self):
-        doc = FreeCAD.ActiveDocument
-        if hasattr(self, "previewObj") and self.previewObj:
-            try:
-                doc.removeObject(self.previewObj.Name)
-            except:
-                pass
-            self.previewObj = None
+        print("\n=== clearPreview() ===")
 
+        if not hasattr(self, "previewObj") or not self.previewObj:
+            print("Pas de previewObj → rien à effacer")
+            return
+
+        obj = self.previewObj
+        doc = FreeCAD.ActiveDocument
+
+        print("Nom du preview :", obj.Name)
+
+        # Vérifier le parent
+        try:
+            parent = obj.getParentGeoFeatureGroup()
+            print("Parent :", parent)
+            if parent:
+                print("Parent TypeId :", parent.TypeId)
+        except Exception as e:
+            print("Erreur en récupérant le parent :", e)
+            parent = None
+
+        try:
+            if parent and parent.TypeId == "PartDesign::Body":
+                print("→ Suppression via le Body :", parent.Name)
+                parent.removeObject(obj)
+            else:
+                print("→ Suppression via le document")
+                doc.removeObject(obj.Name)
+
+        except Exception as e:
+            print("Erreur lors de la suppression :", e)
+
+        self.previewObj = None
+        print("previewObj mis à None")
+        print("=== FIN clearPreview ===\n")
 
     def showPadPreview(self):
+        # Effacer l'ancien preview
         self.clearPreview()
+
         doc = FreeCAD.ActiveDocument
 
-        # Récupérer la forme du ShapeString
-        shape = self.shape.Shape
+        # 1) Géométrie transformée globalement
+        shape_copy = self.shape.Shape.copy()
+        shape_copy.Placement = self.shape.getGlobalPlacement()
 
-        # Normale de la face support
+        # 2) Normale locale de la face
         face = selObj.Shape.getElement(nomFace)
         normal = face.normalAt(0, 0)
 
-        # Extrusion
-        extruded = shape.extrude(normal * self.padSpin.value())
+        # 3) Extrusion alignée
+        extruded = shape_copy.extrude(normal * self.padSpin.value())
 
-        # Création de l'objet preview
+        # 4) Création du preview (dans le document racine, PAS dans le Body)
         obj = doc.addObject("Part::Feature", "PreviewPad")
         obj.Shape = extruded
         obj.ViewObject.Transparency = 70
-        obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)  # bleu clair
+        obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)
 
+        # 5) Stocker la référence pour clearPreview()
         self.previewObj = obj
-        #doc.recompute()
-
-
 
     def showPocketPreview(self):
+        # Effacer l'ancien preview
         self.clearPreview()
+
         doc = FreeCAD.ActiveDocument
 
-        shape = self.shape.Shape
+        # 1) Géométrie transformée globalement
+        shape_copy = self.shape.Shape.copy()
+        shape_copy.Placement = self.shape.getGlobalPlacement()
+
+        # 2) Normale locale de la face
         face = selObj.Shape.getElement(nomFace)
         normal = face.normalAt(0, 0)
 
-        # Extrusion vers l'extérieur (comme le Pad)
-        extruded = shape.extrude(normal * self.cavitySpin.value())
+        # 3) Extrusion alignée (profondeur négative pour cavité)
+        extruded = shape_copy.extrude(normal * (-self.cavitySpin.value()))
 
-        obj = doc.addObject("Part::Feature", "PreviewCavity")
+        # 4) Création du preview (dans le document racine)
+        obj = doc.addObject("Part::Feature", "PreviewPocket")
         obj.Shape = extruded
         obj.ViewObject.Transparency = 70
-        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)  # rouge clair
+        obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)
 
+        # 5) Stocker la référence pour clearPreview()
         self.previewObj = obj
-        #doc.recompute()
 
     def autoFixMirrorDirection(self):
         print("\n=== autoFixMirrorDirection ===")
@@ -463,55 +498,55 @@ else:
     ##########################################################"
     TextAdjustDialog.autoFixMirrorDirection(tmpDlg)
 
-dlg = TextAdjustDialog(nouvelleShapeString)
-result = dlg.exec()
-dlg.clearPreview()
+    dlg = TextAdjustDialog(nouvelleShapeString)
+    result = dlg.exec()
+    dlg.clearPreview()
 
-# Si l'utilisateur annule → on sort proprement
-if result != QtGui.QDialog.Accepted:
-    print("Action annulée par l'utilisateur")
-    FreeCAD.ActiveDocument.removeObject(nouvelleShapeString.Name)
-    #FreeCAD.ActiveDocument.recompute()
+    # Si l'utilisateur annule → on sort proprement
+    if result != QtGui.QDialog.Accepted:
+        print("Action annulée par l'utilisateur")
+        FreeCAD.ActiveDocument.removeObject(nouvelleShapeString.Name)
+        #FreeCAD.ActiveDocument.recompute()
 
-else:
-    doc = FreeCAD.ActiveDocument
+    else:
+        doc = FreeCAD.ActiveDocument
 
-    # Si Pad coché
-    if dlg.padCheck.isChecked():
-        ##########################" pour le print, après on retire
-        face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
-        print("Normale de la face sélectionnée :", normal)
-        ##########################################################"
-        dlg.autoFixMirrorDirection()
-        pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
-        pad.Profile = (nouvelleShapeString, ["Face1"])
-        pad.Length = dlg.padSpin.value()
-        pad.AllowMultiFace = False
-        # doc.recompute()
-        # FreeCAD vient de casser MapReversed → on le remet
-        nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
-        # doc.recompute()
+        # Si Pad coché
+        if dlg.padCheck.isChecked():
+            ##########################" pour le print, après on retire
+            face = selObj.Shape.getElement(nomFace)
+            normal = face.normalAt(0, 0)
+            print("Normale de la face sélectionnée :", normal)
+            ##########################################################"
+            dlg.autoFixMirrorDirection()
+            pad = bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
+            pad.Profile = (nouvelleShapeString, ["Face1"])
+            pad.Length = dlg.padSpin.value()
+            pad.AllowMultiFace = False
+            # doc.recompute()
+            # FreeCAD vient de casser MapReversed → on le remet
+            nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
+            # doc.recompute()
 
-    # Si Cavité cochée
-    elif dlg.cavityCheck.isChecked():
-        dlg.autoFixMirrorDirection()
-        pocket = bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
-        # Profil = ShapeString (pas Face1)
-        pocket.Profile = nouvelleShapeString
-        # Profondeur
-        pocket.Length = dlg.cavitySpin.value()
-        # Obligatoire pour ShapeString
-        pocket.AllowMultiFace = False
-        # Direction = normale de la face support
-        pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
+        # Si Cavité cochée
+        elif dlg.cavityCheck.isChecked():
+            dlg.autoFixMirrorDirection()
+            pocket = bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
+            # Profil = ShapeString (pas Face1)
+            pocket.Profile = nouvelleShapeString
+            # Profondeur
+            pocket.Length = dlg.cavitySpin.value()
+            # Obligatoire pour ShapeString
+            pocket.AllowMultiFace = False
+            # Direction = normale de la face support
+            pocket.ReferenceAxis = (nouvelleShapeString, ["N_Axis"])
 
-        #doc.recompute()
-        # FreeCAD vient de casser MapReversed → on le remet
-        nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
-        #doc.recompute()
+            #doc.recompute()
+            # FreeCAD vient de casser MapReversed → on le remet
+            nouvelleShapeString.MapReversed = dlg.mirrorCheck.isChecked()
+            #doc.recompute()
 
-        # Optionnel : masquer le ShapeString
-        nouvelleShapeString.ViewObject.Visibility = False
+            # Optionnel : masquer le ShapeString
+            nouvelleShapeString.ViewObject.Visibility = False
 
 
