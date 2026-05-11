@@ -269,29 +269,37 @@ class TextAdjustDialog(QtGui.QDialog):
         print("=== FIN clearPreview ===\n")
 
     def showPadPreview(self):
-        # Effacer l'ancien preview
         self.clearPreview()
-
         doc = FreeCAD.ActiveDocument
 
         # 1) Géométrie transformée globalement
         shape_copy = self.shape.Shape.copy()
-        shape_copy.Placement = self.shape.getGlobalPlacement()
+
+        # Placement LOCAL du ShapeString
+        pl_string_local = self.shape.Placement
+
+        # Placement GLOBAL du Body
+        pl_body_global = bodyOfFace.getGlobalPlacement()
+
+        # Placement final = Body_global * ShapeString_local
+        shape_copy.Placement = pl_body_global.multiply(pl_string_local)
 
         # 2) Normale locale de la face
         face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
+        normal_local = face.normalAt(0, 0)
 
-        # 3) Extrusion alignée
-        extruded = shape_copy.extrude(normal * self.padSpin.value())
+        # 3) Transformer la normale dans le repère GLOBAL
+        normal_global = pl_body_global.Rotation.multVec(normal_local)
 
-        # 4) Création du preview (dans le document racine, PAS dans le Body)
+        # 4) Extrusion alignée avec le Body
+        extruded = shape_copy.extrude(normal_global * self.padSpin.value())
+
+        # 5) Création du preview
         obj = doc.addObject("Part::Feature", "PreviewPad")
         obj.Shape = extruded
         obj.ViewObject.Transparency = 70
         obj.ViewObject.ShapeColor = (0.3, 0.8, 1.0)
 
-        # 5) Stocker la référence pour clearPreview()
         self.previewObj = obj
 
     def showPocketPreview(self):
@@ -302,22 +310,33 @@ class TextAdjustDialog(QtGui.QDialog):
 
         # 1) Géométrie transformée globalement
         shape_copy = self.shape.Shape.copy()
-        shape_copy.Placement = self.shape.getGlobalPlacement()
+
+        # Placement LOCAL du ShapeString (dans le Body)
+        pl_string_local = self.shape.Placement
+
+        # Placement GLOBAL du Body
+        pl_body_global = bodyOfFace.getGlobalPlacement()
+
+        # Placement final = Body_global * ShapeString_local
+        shape_copy.Placement = pl_body_global.multiply(pl_string_local)
 
         # 2) Normale locale de la face
         face = selObj.Shape.getElement(nomFace)
-        normal = face.normalAt(0, 0)
+        normal_local = face.normalAt(0, 0)
 
-        # 3) Extrusion alignée (profondeur négative pour cavité)
-        extruded = shape_copy.extrude(normal * (-self.cavitySpin.value()))
+        # 3) Transformer la normale dans le repère GLOBAL
+        normal_global = pl_body_global.Rotation.multVec(normal_local)
 
-        # 4) Création du preview (dans le document racine)
+        # 4) Extrusion alignée (profondeur négative pour cavité)
+        extruded = shape_copy.extrude(normal_global * (-self.cavitySpin.value()))
+
+        # 5) Création du preview (dans le document racine)
         obj = doc.addObject("Part::Feature", "PreviewPocket")
         obj.Shape = extruded
         obj.ViewObject.Transparency = 70
         obj.ViewObject.ShapeColor = (1.0, 0.4, 0.4)
 
-        # 5) Stocker la référence pour clearPreview()
+        # 6) Stocker la référence pour clearPreview()
         self.previewObj = obj
 
     def autoFixMirrorDirection(self):
