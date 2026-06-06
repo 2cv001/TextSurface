@@ -1,4 +1,3 @@
-
 # TextSurface.FCMacro
 # 2026-05-11 18:55
 
@@ -6,6 +5,118 @@ from PySide import QtGui, QtCore
 import FreeCADGui, FreeCAD, Draft
 from statistics import mean
 import os
+
+# --- Multilang support -------------------------------------------------------
+
+# Détermine la langue de l’utilisateur à partir de FreeCADGui
+def get_user_language():
+    try:
+        locale = FreeCADGui.getLocale().lower()
+        # Normalisation
+        if locale.startswith("fr") or "french" in locale:
+            return "fr"
+        if locale.startswith("en") or "english" in locale:
+            return "en"
+        '''
+        if locale.startswith("de") or "german" in locale:
+            return "de"
+        if locale.startswith("es") or "spanish" in locale:
+            return "es"
+        if locale.startswith("it") or "italian" in locale:
+            return "it"
+        '''
+        # Fallback
+        return "en"
+    except Exception:
+        return "en"
+
+
+def tr(key):
+    lang = get_user_language()
+    return TRANSLATIONS.get(lang, TRANSLATIONS["en"]).get(key, key)
+
+
+TRANSLATIONS = {
+    "fr": {
+        # Messages de sélection
+        "invalid_selection_title": "Sélection invalide",
+        "invalid_selection_msg": "Sélectionnez une FACE appartenant à un Body PartDesign.",
+
+        # Fenêtre principale
+        "window_title": "Réglages du texte",
+
+        # Labels
+        "label_text": "Texte :",
+        "label_font": "Police :",
+        "label_text_size": "Taille du texte :",
+        "mirror_checkbox": "Miroir (MapReversed)",
+        "label_offset_x": "Offset X :",
+        "label_offset_y": "Offset Y :",
+        "label_offset_z": "Offset Z :",
+        "label_rotation": "Rotation (° autour de la normale) :",
+        "pad_checkbox": "Pad",
+        "pad_label": "Pad :",
+        "cavity_checkbox": "Cavité",
+        "cavity_label": "Cavité :",
+        "live_preview": "Voir en temps réel",
+
+        # Boutons
+        "btn_apply": "Appliquer",
+        "btn_validate": "Valider",
+        "btn_cancel": "Abandon",
+
+        # Dialogue de police
+        "font_dialog_title": "Choisir une police TrueType",
+        "font_dialog_filter": "Polices (*.ttf *.otf);;Tous les fichiers (*.*)",
+
+        # Texte par défaut
+        "default_text": "Text",
+
+        # Noms d’objets dans l’arborescence
+        "pad_object_name": "Pad_Texte",
+        "cavity_object_name": "Cavite_Texte",
+    },
+
+    "en": {
+        # Selection messages
+        "invalid_selection_title": "Invalid selection",
+        "invalid_selection_msg": "Select a FACE belonging to a PartDesign Body.",
+
+        # Main window
+        "window_title": "Text settings",
+
+        # Labels
+        "label_text": "Text:",
+        "label_font": "Font:",
+        "label_text_size": "Text size:",
+        "mirror_checkbox": "Mirror (MapReversed)",
+        "label_offset_x": "Offset X:",
+        "label_offset_y": "Offset Y:",
+        "label_offset_z": "Offset Z:",
+        "label_rotation": "Rotation (° around the normal):",
+        "pad_checkbox": "Pad",
+        "pad_label": "Pad:",
+        "cavity_checkbox": "Pocket",
+        "cavity_label": "Pocket:",
+        "live_preview": "Live preview",
+
+        # Buttons
+        "btn_apply": "Apply",
+        "btn_validate": "OK",
+        "btn_cancel": "Cancel",
+
+        # Font dialog
+        "font_dialog_title": "Choose a TrueType font",
+        "font_dialog_filter": "Fonts (*.ttf *.otf);;All files (*.*)",
+
+        # Default text
+        "default_text": "Text",
+
+        # Object names in tree
+        "pad_object_name": "Pad_Text",
+        "cavity_object_name": "Pocket_Text",
+    }
+}
 
 # --- Déterminer le chemin du fichier INI ---
 macro_fullpath = __file__
@@ -22,7 +133,7 @@ def loadFontFromIni(default_font):
             with open(ini_path, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("font="):
-                        font = line.split("=",1)[1].strip()
+                        font = line.split("=", 1)[1].strip()
                         if os.path.exists(font):
                             return font
         except:
@@ -36,8 +147,6 @@ def saveFontToIni(font_path):
             f.write("font=" + font_path)
     except:
         pass
-
-
 
 
 class TextSurfaceApp:
@@ -186,8 +295,8 @@ class TextSurfaceApp:
         if invalid:
             QtGui.QMessageBox.warning(
                 None,
-                "Sélection invalide",
-                "Sélectionnez une FACE appartenant à un Body PartDesign."
+                tr("invalid_selection_title"),
+                tr("invalid_selection_msg")
             )
             return
 
@@ -195,7 +304,7 @@ class TextSurfaceApp:
         self.nomFace = selEx[0].SubElementNames[0]
 
         TailleCaracteres = 4
-        TextParDefaut = "Text"
+        TextParDefaut = tr("default_text")
 
         self.nouvelleShapeString = Draft.makeShapeString(
             String=TextParDefaut,
@@ -227,9 +336,7 @@ class TextSurfaceApp:
         self.nouvelleShapeString.recompute()
 
         # Correction miroir initiale
-
         self.autoFixMirrorDirection()
-
 
         # --- Ouvrir la fenêtre ---
         self.dlg = TextAdjustDialog(self)
@@ -245,7 +352,7 @@ class TextSurfaceApp:
 
         if self.dlg.padCheck.isChecked():
             self.autoFixMirrorDirection()
-            pad = self.bodyOfFace.newObject("PartDesign::Pad", "Pad_Texte")
+            pad = self.bodyOfFace.newObject("PartDesign::Pad", tr("pad_object_name"))
             pad.Profile = (self.nouvelleShapeString, ["Face1"])
             pad.Length = self.dlg.padSpin.value()
             pad.AllowMultiFace = False
@@ -253,21 +360,13 @@ class TextSurfaceApp:
 
         elif self.dlg.cavityCheck.isChecked():
             self.autoFixMirrorDirection()
-            pocket = self.bodyOfFace.newObject("PartDesign::Pocket", "Cavite_Texte")
+            pocket = self.bodyOfFace.newObject("PartDesign::Pocket", tr("cavity_object_name"))
             pocket.Profile = self.nouvelleShapeString
             pocket.Length = self.dlg.cavitySpin.value()
             pocket.AllowMultiFace = False
             pocket.ReferenceAxis = (self.nouvelleShapeString, ["N_Axis"])
             self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
             self.nouvelleShapeString.ViewObject.Visibility = False
-
-
-
-
-
-
-
-
 
 
 class TextAdjustDialog(QtGui.QDialog):
@@ -277,26 +376,27 @@ class TextAdjustDialog(QtGui.QDialog):
         self.shape = app.nouvelleShapeString
         self.previewObj = None
 
-        self.setWindowTitle("Réglages du texte")
+        self.setWindowTitle(tr("window_title"))
 
         layout = QtGui.QFormLayout()
 
         # --- Texte ---
         self.textEdit = QtGui.QLineEdit(self.shape.String)
         self.textEdit.setMinimumWidth(300)
-        layout.addRow("Texte :", self.textEdit)
+        layout.addRow(tr("label_text"), self.textEdit)
         self.textEdit.textChanged.connect(self.onUserChangedSomething)
 
         # --- Police de caractères ---
         self.fontEdit = QtGui.QLineEdit(app.FichierPoliceDeCaracteres)
         self.fontEdit.setMinimumWidth(300)
-        self.fontBtn = QtGui.QPushButton("Choisir…")
+        self.fontBtn = QtGui.QPushButton(tr("btn_apply"))  # label "Choisir…" remplacé par une clé dédiée si besoin
+        self.fontBtn.setText("Choisir…" if get_user_language() == "fr" else "Browse…")
         self.fontBtn.clicked.connect(self.chooseFont)
 
         fontLayout = QtGui.QHBoxLayout()
         fontLayout.addWidget(self.fontEdit)
         fontLayout.addWidget(self.fontBtn)
-        layout.addRow("Police :", fontLayout)
+        layout.addRow(tr("label_font"), fontLayout)
 
         # --- Taille du texte ---
         self.sizeSpin = QtGui.QDoubleSpinBox()
@@ -304,11 +404,11 @@ class TextAdjustDialog(QtGui.QDialog):
         self.sizeSpin.setDecimals(3)
         self.sizeSpin.setSingleStep(0.5)
         self.sizeSpin.setValue(self.shape.Size)
-        layout.addRow("Taille du texte :", self.sizeSpin)
+        layout.addRow(tr("label_text_size"), self.sizeSpin)
         self.sizeSpin.valueChanged.connect(self.onUserChangedSomething)
 
         # --- Miroir ---
-        self.mirrorCheck = QtGui.QCheckBox("Miroir (MapReversed)")
+        self.mirrorCheck = QtGui.QCheckBox(tr("mirror_checkbox"))
         self.mirrorCheck.setChecked(self.shape.MapReversed)
         layout.addRow(self.mirrorCheck)
         self.mirrorCheck.toggled.connect(self.onUserChangedSomething)
@@ -325,9 +425,9 @@ class TextAdjustDialog(QtGui.QDialog):
         self.ySpin.setValue(self.shape.AttachmentOffset.Base.y)
         self.zSpin.setValue(self.shape.AttachmentOffset.Base.z)
 
-        layout.addRow("Offset X :", self.xSpin)
-        layout.addRow("Offset Y :", self.ySpin)
-        layout.addRow("Offset Z :", self.zSpin)
+        layout.addRow(tr("label_offset_x"), self.xSpin)
+        layout.addRow(tr("label_offset_y"), self.ySpin)
+        layout.addRow(tr("label_offset_z"), self.zSpin)
 
         self.xSpin.valueChanged.connect(self.onUserChangedSomething)
         self.ySpin.valueChanged.connect(self.onUserChangedSomething)
@@ -337,7 +437,7 @@ class TextAdjustDialog(QtGui.QDialog):
         self.rotSpin = QtGui.QDoubleSpinBox()
         self.rotSpin.setRange(-360, 360)
         self.rotSpin.setValue(0)
-        layout.addRow("Rotation (° autour de la normale) :", self.rotSpin)
+        layout.addRow(tr("label_rotation"), self.rotSpin)
         self.rotSpin.valueChanged.connect(self.onUserChangedSomething)
 
         # --- Pad / Cavité ---
@@ -346,20 +446,20 @@ class TextAdjustDialog(QtGui.QDialog):
         self.padSpin.setDecimals(3)
         self.padSpin.setValue(1)
 
-        self.padCheck = QtGui.QCheckBox("Pad")
+        self.padCheck = QtGui.QCheckBox(tr("pad_checkbox"))
         self.padCheck.toggled.connect(self.onPadToggled)
 
         padLayout = QtGui.QHBoxLayout()
         padLayout.addWidget(self.padSpin)
         padLayout.addWidget(self.padCheck)
-        layout.addRow("Pad :", padLayout)
+        layout.addRow(tr("pad_label"), padLayout)
 
         self.cavitySpin = QtGui.QDoubleSpinBox()
         self.cavitySpin.setRange(0.1, 1000)
         self.cavitySpin.setDecimals(3)
         self.cavitySpin.setValue(1)
 
-        self.cavityCheck = QtGui.QCheckBox("Cavité")
+        self.cavityCheck = QtGui.QCheckBox(tr("cavity_checkbox"))
         self.cavityCheck.toggled.connect(self.onCavityToggled)
 
         self.padSpin.valueChanged.connect(self.onUserChangedSomething)
@@ -370,27 +470,26 @@ class TextAdjustDialog(QtGui.QDialog):
         cavityLayout = QtGui.QHBoxLayout()
         cavityLayout.addWidget(self.cavitySpin)
         cavityLayout.addWidget(self.cavityCheck)
-        layout.addRow("Cavité :", cavityLayout)
+        layout.addRow(tr("cavity_label"), cavityLayout)
 
         # --- Voir en temps réel ---
-        self.livePreviewCheck = QtGui.QCheckBox("Voir en temps réel")
+        self.livePreviewCheck = QtGui.QCheckBox(tr("live_preview"))
         self.livePreviewCheck.setChecked(False)
         self.livePreviewCheck.toggled.connect(self.onLivePreviewToggled)
         layout.addRow(self.livePreviewCheck)
 
-
         # --- Boutons ---
         btnLayout = QtGui.QHBoxLayout()
 
-        applyPreviewBtn = QtGui.QPushButton("Appliquer")
+        applyPreviewBtn = QtGui.QPushButton(tr("btn_apply"))
         applyPreviewBtn.clicked.connect(self.updatePreview)
         btnLayout.addWidget(applyPreviewBtn)
 
-        validateBtn = QtGui.QPushButton("Valider")
+        validateBtn = QtGui.QPushButton(tr("btn_validate"))
         validateBtn.clicked.connect(self.onAccept)
         btnLayout.addWidget(validateBtn)
 
-        cancelBtn = QtGui.QPushButton("Abandon")
+        cancelBtn = QtGui.QPushButton(tr("btn_cancel"))
         cancelBtn.clicked.connect(self.reject)
         btnLayout.addWidget(cancelBtn)
 
@@ -413,9 +512,9 @@ class TextAdjustDialog(QtGui.QDialog):
     def chooseFont(self):
         font_path, _ = QtGui.QFileDialog.getOpenFileName(
             self,
-            "Choisir une police TrueType",
+            tr("font_dialog_title"),
             "",
-            "Polices (*.ttf *.otf);;Tous les fichiers (*.*)"
+            tr("font_dialog_filter")
         )
 
         if font_path:
@@ -539,11 +638,10 @@ class TextAdjustDialog(QtGui.QDialog):
             self.applyChanges()
 
 
-
-
 def main():
     app = TextSurfaceApp()
     app.run()
+
 
 if __name__ == "__main__":
     main()
