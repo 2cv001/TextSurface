@@ -264,6 +264,33 @@ class TextSurfaceApp:
     # ------------------------------------------------
     # Programme principal
     # ------------------------------------------------
+
+    def applyFinalResult(self):
+        doc = FreeCAD.ActiveDocument
+
+        if self.dlg.padCheck.isChecked():
+            self.autoFixMirrorDirection()
+            pad = self.bodyOfFace.newObject("PartDesign::Pad", tr("pad_object_name"))
+            pad.Profile = (self.nouvelleShapeString, ["Face1"])
+            pad.Length = self.dlg.padSpin.value()
+            pad.AllowMultiFace = False
+            self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
+            doc.recompute()
+            self.nouvelleShapeString.ViewObject.Visibility = False  # ← IMPORTANT
+
+        elif self.dlg.cavityCheck.isChecked():
+            self.autoFixMirrorDirection()
+            pocket = self.bodyOfFace.newObject("PartDesign::Pocket", tr("cavity_object_name"))
+            pocket.Profile = self.nouvelleShapeString
+            pocket.Length = self.dlg.cavitySpin.value()
+            pocket.AllowMultiFace = False
+            pocket.ReferenceAxis = (self.nouvelleShapeString, ["N_Axis"])
+            self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
+            self.nouvelleShapeString.ViewObject.Visibility = False
+
+    def cancelOperation(self):
+        FreeCAD.ActiveDocument.removeObject(self.nouvelleShapeString.Name)
+
     def run(self):
 
         # --- Déterminer la police par défaut selon OS ---
@@ -338,40 +365,35 @@ class TextSurfaceApp:
         # Correction miroir initiale
         self.autoFixMirrorDirection()
 
-        # --- Ouvrir la fenêtre ---
-        self.dlg = TextAdjustDialog(self)
-        result = self.dlg.exec()
-        self.clearPreview()
+        # --- Ouvrir la fenêtre non-modale ---
+        mainwin = FreeCADGui.getMainWindow()
 
-        if result != QtGui.QDialog.Accepted:
-            FreeCAD.ActiveDocument.removeObject(self.nouvelleShapeString.Name)
-            return
-
-        # --- Application finale ---
-        doc = FreeCAD.ActiveDocument
-
-        if self.dlg.padCheck.isChecked():
-            self.autoFixMirrorDirection()
-            pad = self.bodyOfFace.newObject("PartDesign::Pad", tr("pad_object_name"))
-            pad.Profile = (self.nouvelleShapeString, ["Face1"])
-            pad.Length = self.dlg.padSpin.value()
-            pad.AllowMultiFace = False
-            self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
-
-        elif self.dlg.cavityCheck.isChecked():
-            self.autoFixMirrorDirection()
-            pocket = self.bodyOfFace.newObject("PartDesign::Pocket", tr("cavity_object_name"))
-            pocket.Profile = self.nouvelleShapeString
-            pocket.Length = self.dlg.cavitySpin.value()
-            pocket.AllowMultiFace = False
-            pocket.ReferenceAxis = (self.nouvelleShapeString, ["N_Axis"])
-            self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
-            self.nouvelleShapeString.ViewObject.Visibility = False
+        global textsurfdialog
+        textsurfdialog = TextAdjustDialog(self)  # on passe l'app
+        textsurfdialog.setParent(mainwin)  # ← CRUCIAL : parent = FreeCAD
+        textsurfdialog.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowTitleHint |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowMinMaxButtonsHint |
+            QtCore.Qt.WindowStaysOnTopHint  # ← reste au-dessus de FreeCAD
+        )
+        self.dlg = textsurfdialog  # ← CRUCIAL pour preview/padSpin/etc.
+        textsurfdialog.show()
 
 
 class TextAdjustDialog(QtGui.QDialog):
     def __init__(self, app):
         super(TextAdjustDialog, self).__init__()
+        # Rendre la fenêtre indépendante mais au-dessus de FreeCAD
+        self.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowTitleHint |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowMinMaxButtonsHint |
+            QtCore.Qt.WindowStaysOnTopHint
+        )
+
         self.app = app
         self.shape = app.nouvelleShapeString
         self.previewObj = None
@@ -490,7 +512,7 @@ class TextAdjustDialog(QtGui.QDialog):
         btnLayout.addWidget(validateBtn)
 
         cancelBtn = QtGui.QPushButton(tr("btn_cancel"))
-        cancelBtn.clicked.connect(self.reject)
+        cancelBtn.clicked.connect(self.onCancel)
         btnLayout.addWidget(cancelBtn)
 
         layout.addRow(btnLayout)
@@ -500,11 +522,39 @@ class TextAdjustDialog(QtGui.QDialog):
     # ------------------------------------------------
     # Acceptation
     # ------------------------------------------------
+
+    def onCancel(self):
+        # 1. Supprimer le ShapeString provisoire
+        self.app.cancelOperation()
+
+        # 2. Supprimer le PreviewPad / PreviewPocket
+        self.app.clearPreview()
+
+        # 3. Fermer la fenêtre
+        self.close()
+
+        # 4. Détruire proprement
+        self.deleteLater()
+
     def onAccept(self):
+        # 1. Appliquer les changements en cours
         self.applyChanges()
+
+        # 2. Corriger l’offset si l’utilisateur n’a rien modifié
         if abs(self.shape.AttachmentOffset.Base.z - OFFSET_INITIAL) < 1e-6:
             self.shape.AttachmentOffset.Base.z = 0.0
-        self.accept()
+
+        # 3. Appliquer le résultat final (Pad/Cavité)
+        self.app.applyFinalResult()
+
+        # 4. Nettoyer la preview
+        self.app.clearPreview()
+
+        # 5. Fermer la fenêtre
+        self.close()
+
+        # 6. Détruire proprement
+        self.deleteLater()
 
     # ------------------------------------------------
     # Choix police
