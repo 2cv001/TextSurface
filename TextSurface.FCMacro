@@ -275,7 +275,6 @@ class TextSurfaceApp:
             pad.Length = self.dlg.padSpin.value()
             pad.AllowMultiFace = False
             self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
-            doc.recompute()
             self.nouvelleShapeString.ViewObject.Visibility = False  # ← IMPORTANT
 
         elif self.dlg.cavityCheck.isChecked():
@@ -287,6 +286,7 @@ class TextSurfaceApp:
             pocket.ReferenceAxis = (self.nouvelleShapeString, ["N_Axis"])
             self.nouvelleShapeString.MapReversed = self.dlg.mirrorCheck.isChecked()
             self.nouvelleShapeString.ViewObject.Visibility = False
+        doc.recompute()
 
     def cancelOperation(self):
         FreeCAD.ActiveDocument.removeObject(self.nouvelleShapeString.Name)
